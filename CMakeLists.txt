@@ -2,9 +2,8 @@
 cmake_minimum_required(VERSION 3.1)
 project(nexus)
 
-option(BUILD_NXS_BUILD "" ON)
-option(BUILD_NXS_EDIT "" ON)
-option(BUILD_NXS_VIEW "" ON)
+option(BUILD_NXS_BUILD "" OFF)
+option(BUILD_NXS_EDIT "" OFF)
 
 set (CMAKE_CXX_STANDARD 11)
 
@@ -14,11 +13,6 @@ set(CMAKE_POLICY_DEFAULT_CMP0077 NEW)
 set(CMAKE_WINDOWS_EXPORT_ALL_SYMBOLS ON)
 
 find_package(Qt5 COMPONENTS Core Gui REQUIRED)
-
-if (BUILD_NXS_VIEW)
-	include(${CMAKE_CURRENT_SOURCE_DIR}/src/cmake/tools.cmake)
-endif()
-
 
 # nexus version
 if (EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/NEXUS_VERSION")
@@ -66,6 +60,3 @@ if(BUILD_NXS_EDIT)
 	add_subdirectory(src/nxsedit)
 endif()
 
-if(BUILD_NXS_VIEW)
-	add_subdirectory(src/nxsview)
-endif()
