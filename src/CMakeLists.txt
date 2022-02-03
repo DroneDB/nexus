@@ -60,7 +60,20 @@ add_library(nexus STATIC
 target_include_directories(nexus PUBLIC
 	${CMAKE_CURRENT_SOURCE_DIR})
 
-target_link_libraries(nexus PUBLIC vcglib corto Qt5::Core Qt5::Gui)
+set(ADDITIONAL_LIBS "")
+if (UNIX)
+    get_property(qt5loc TARGET Qt5::Core PROPERTY IMPORTED_LOCATION_RELEASE)
+    get_filename_component(QT5_BASE ${qt5loc} DIRECTORY)
+    set(static_libs "libqtlibpng.a" "libqtpcre2.a" "libqtfreetype.a")
+    foreach(lib ${static_libs})
+        if (EXISTS "${QT5_BASE}/${lib}")
+            message(STATUS "Linking ${lib}")
+            list(APPEND ADDITIONAL_LIBS "${QT5_BASE}/${lib}")
+        endif()
+    endforeach()
+endif()
+
+target_link_libraries(nexus PUBLIC vcglib corto Qt5::Core Qt5::Gui ${ADDITIONAL_LIBS})
 
 if (WIN32)
 	target_compile_definitions(nexus PUBLIC NOMINMAX)
