@@ -71,6 +71,8 @@ if (UNIX)
             list(APPEND ADDITIONAL_LIBS "${QT5_BASE}/${lib}")
         endif()
     endforeach()
+
+    #list(APPEND ADDITIONAL_LIBS "-Wl,--whole-archive -ldl -lrt -lpthread -Wl,--no-whole-archive")
 endif()
 
 target_link_libraries(nexus PUBLIC vcglib corto Qt5::Core Qt5::Gui ${ADDITIONAL_LIBS})
