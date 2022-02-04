@@ -479,7 +479,7 @@ QImage NexusBuilder::extractNodeTex(TMesh &mesh, int level, float &error, float 
 
 	image = image.mirrored();
 	//static int imgcount = 0;
-	//image.save(QString("OUT_test_%1.jpg").arg(imgcount++));
+	//if (!image.save(QString("d:\\OUT_test_%1.jpg").arg(imgcount++))) std::cerr << "FAILED";
 	return image;
 }
 
@@ -988,6 +988,7 @@ void NexusBuilder::save(QString filename) {
 				qint64 buffer_size = 64*1<<20; //64 MB
 				do {
 					auto buffer = nodeTex.read(buffer_size);
+					std::cerr << buffer.size() << std::endl;
 					if(!buffer.size())
 						break;
 
