@@ -210,9 +210,9 @@ void ObjLoader::readMTL() {
 			cnt++;
 		}
 	}
-	std::cout << "Colors read: " << cnt << std::endl;
-	for (auto tex : texture_filenames)
-		std::cout << qPrintable("Texture: " + tex.filename) << std::endl;
+	//std::cout << "Colors read: " << cnt << std::endl;
+	//for (auto tex : texture_filenames)
+		//std::cout << qPrintable("Texture: " + tex.filename) << std::endl;
 	if (texture_filenames.size() > 0)
 		has_textures = true;
 	if (cnt)
@@ -229,7 +229,7 @@ void ObjLoader::cacheVertices() {
 		
 		int s = file.readLine(buffer, 1024);
 		if (s == -1) {                     //end of file
-			std::cout << "Vertices read: " << cnt << std::endl;
+			//std::cout << "Vertices read: " << cnt << std::endl;
 			break;
 
 		}
@@ -510,7 +510,7 @@ quint32 ObjLoader::getTriangles(quint32 size, Triangle *faces) {
 	current_tri_pos = cpos;
 
 	if (count == 0)
-		std::cout << "faces read: " << n_triangles << std::endl;
+		//std::cout << "faces read: " << n_triangles << std::endl;
 
 	return count;
 }

@@ -148,7 +148,7 @@ void Extractor::save(QString output, nx::Signature &signature) {
 		assert(patch.node < nodes.size());
 	}
 	
-	cout << "Textures: " << nexus->header.n_textures << endl;
+	//cout << "Textures: " << nexus->header.n_textures << endl;
 	textures.resize(nexus->header.n_textures);
 	
 	header.n_nodes = nodes.size();
@@ -235,7 +235,7 @@ nx::Traversal::Action Extractor::expand(nx::Traversal::HeapNode h) {
 	current_size += node.getEndOffset() - node.getBeginOffset();
 	current_triangles += node.nface;
 	
-	cout << "Max size: " << max_size << " Current size: " << current_size << endl;
+	//cout << "Max size: " << max_size << " Current size: " << current_size << endl;
 	if(max_triangles && current_triangles > max_triangles)
 		return STOP;
 	if(max_size && current_size > max_size)
@@ -324,28 +324,28 @@ void Extractor::compress(QFile &file, nx::Signature &signature, nx::Node &node, 
 		//cout << "Header: " << encoder.header_size << " bpv: " << (float)encoder.header_size/nvert << endl;
 		
 		crt::VertexAttribute *coord = encoder.data["position"];
-		cout << "Coord bpv; " << 8.0f*coord->size/nvert << " size: " << coord->size << endl;
-		cout << "Coord q: " << coord->q << " bits: " << coord->bits << endl << endl;
+		//cout << "Coord bpv; " << 8.0f*coord->size/nvert << " size: " << coord->size << endl;
+		//cout << "Coord q: " << coord->q << " bits: " << coord->bits << endl << endl;
 		
 		crt::VertexAttribute *norm = encoder.data["normal"];
 		if(norm) {
-			cout << "Normal bpv; " << 8.0f*norm->size/nvert << " size: " << norm->size << endl;
-			cout << "Normal q: " << norm->q << " bits: " << norm->bits << endl << endl;
+			//cout << "Normal bpv; " << 8.0f*norm->size/nvert << " size: " << norm->size << endl;
+			//cout << "Normal q: " << norm->q << " bits: " << norm->bits << endl << endl;
 		}
 		
 		crt::ColorAttr *color = dynamic_cast<crt::ColorAttr *>(encoder.data["color"]);
 		if(color) {
-			cout << "Color bpv; " << 8.0f*color->size/nvert << " size: " << color->size << endl;
-			cout << "Color q: " << color->qc[0] << " " << color->qc[1] << " " << color->qc[2] << " " << color->qc[3] << endl;
+			//cout << "Color bpv; " << 8.0f*color->size/nvert << " size: " << color->size << endl;
+			//cout << "Color q: " << color->qc[0] << " " << color->qc[1] << " " << color->qc[2] << " " << color->qc[3] << endl;
 		}
 		
 		crt::GenericAttr<int> *uv = dynamic_cast<crt::GenericAttr<int> *>(encoder.data["uv"]);
 		if(uv) {
-			cout << "Uv bpv; " << 8.0f*uv->size/nvert << endl;
-			cout << "Uv q: " << uv->q << " bits: " << uv->bits << endl << endl;
+			//cout << "Uv bpv; " << 8.0f*uv->size/nvert << endl;
+			//cout << "Uv q: " << uv->q << " bits: " << uv->bits << endl << endl;
 		}
 		
-		cout << "Face bpv; " << 8.0f*encoder.index.size/nvert << " size: " << encoder.index.size << endl; */
+		//cout << "Face bpv; " << 8.0f*encoder.index.size/nvert << " size: " << encoder.index.size << endl; */
 		
 		
 		
@@ -400,8 +400,8 @@ void Extractor::savePly(QString filename) {
 	
 	bool has_colors = nexus->header.signature.vertex.hasColors();
 	
-	cout << "Vertices: " << n_vertices << endl;
-	cout << "Faces: " << n_faces << endl;
+	//cout << "Vertices: " << n_vertices << endl;
+	//cout << "Faces: " << n_faces << endl;
 	{ //stram flushes on destruction
 		QTextStream stream(&ply);
 		stream << "ply\n"
@@ -616,8 +616,8 @@ void Extractor::saveUnifiedPly(QString filename) {
 	
 	
 	
-	cout << "n vertices: " << n_vertices << endl;
-	cout << "n faces: " << n_faces << endl;
+	//cout << "n vertices: " << n_vertices << endl;
+	//cout << "n faces: " << n_faces << endl;
 	{
 		QTextStream stream(&ply);
 		stream << "ply\n"

@@ -78,7 +78,7 @@ vcg::Box3d Stream::getBox(QStringList paths) {
 	
 	
 	foreach(QString file, paths) {
-		qDebug() << "Computing box for " << qPrintable(file);
+		//qDebug() << "Computing box for " << qPrintable(file);
 		MeshLoader *loader = getLoader(file, QString());
 		loader->setMaxMemory(512*(1<<20)); //read only once... does'nt really matter.
 		while(true) {
@@ -113,7 +113,7 @@ void Stream::load(QStringList paths, QString material) {
 	has_normals = true;
 	has_textures = true;
 	foreach(QString file, paths) {
-		qDebug() << "Reading" << qPrintable(file);
+		//qDebug() << "Reading" << qPrintable(file);
 		MeshLoader *loader = getLoader(file, material);
 		load(loader);
 		//box.Add(loader->box); //this lineB AFTER the mesh is streamed

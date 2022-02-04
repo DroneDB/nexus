@@ -243,7 +243,8 @@ uint64_t NexusData::loadRam(uint32_t n) {
 			data.memory = (char *)file->map(texture.getBeginOffset(), texture.getSize());
 			if(!data.memory) {
 				cerr << "Failed mapping texture data" << endl;
-				exit(0);
+				//exit(0);
+				return 0;
 			}
 
 			loadImageFromData(data, t);

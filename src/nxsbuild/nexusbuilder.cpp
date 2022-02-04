@@ -143,7 +143,7 @@ void NexusBuilder::create(KDTree *tree, Stream *stream, uint top_node_size) {
 	int level = 0;
 	int last_top_level_size = 0;
 	do {
-		cout << "Creating level " << level << endl;
+		//cout << "Creating level " << level << endl;
 		tree->clear();
 		if(level % 2) tree->setAxesDiagonal();
 		else tree->setAxesOrthogonal();
@@ -154,8 +154,8 @@ void NexusBuilder::create(KDTree *tree, Stream *stream, uint top_node_size) {
 		createLevel(tree, stream, level);
 		level++;
 		if(skipSimplifyLevels <= 0 && last_top_level_size != 0 && stream->size()/(float)last_top_level_size > 0.7f) {
-			cout << "Stream: " << stream->size() << " Last top level size: " << last_top_level_size << endl;
-			cout << "Larger top level, most probably to high parametrization fragmentation.\n";
+			//cout << "Stream: " << stream->size() << " Last top level size: " << last_top_level_size << endl;
+			//cout << "Larger top level, most probably to high parametrization fragmentation.\n";
 			break;
 		}
 		last_top_level_size = stream->size();
@@ -332,7 +332,9 @@ QImage NexusBuilder::extractNodeTex(TMesh &mesh, int level, float &error, float 
 	if(!success) {
 		cerr << "Failed packing: the texture in a single nexus node would be > 16K\n";
 		cerr << "Try to reduce the size of the nodes using -t (default is 4096)";
-		exit(0);
+		//exit(0);
+		QImage image(finalSize[0], finalSize[1], QImage::Format_RGB32);
+		return image;
 	}
 
 	if (createPowTwoTex) {
@@ -605,7 +607,8 @@ void NexusBuilder::processBlock(KDTreeSoup *input, StreamSoup *output, uint bloc
 		if(tmp.vert.size() > 60000) {
 			cerr << "Unable to properly simplify due to fragmented parametrization\n"
 				 << "Try to reduce the size of the nodes using -f (default is 32768)" << endl;
-			exit(0);
+			//exit(0);
+			return;
 		}
 
 		//save node in nexus temporary structure
@@ -988,7 +991,6 @@ void NexusBuilder::save(QString filename) {
 				qint64 buffer_size = 64*1<<20; //64 MB
 				do {
 					auto buffer = nodeTex.read(buffer_size);
-					std::cerr << buffer.size() << std::endl;
 					if(!buffer.size())
 						break;
 
@@ -1019,7 +1021,7 @@ void NexusBuilder::save(QString filename) {
 		for(int i = 0; i < textures.size()-1; i++) {
 			QFile::remove(QString("nexus_tmp_tex%1.png").arg(i));
 		}
-	cout << "Saving to file " << qPrintable(filename) << endl;
+	//cout << "Saving to file " << qPrintable(filename) << endl;
 	file.close();
 }
 
@@ -1099,7 +1101,7 @@ void NexusBuilder::appendBorderVertices(uint32_t origin, uint32_t destination, s
 
 
 void NexusBuilder::uniformNormals() {
-	cout << "Unifying normals\n";
+	//cout << "Unifying normals\n";
 	/*
 	level 0: for each node in the lowest level:
 			load the neighboroughs

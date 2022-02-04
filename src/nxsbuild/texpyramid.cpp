@@ -64,7 +64,7 @@ bool TexLevel::init(int t, TexAtlas *c, LoadTexture &texture) {
 			QImage img(wx, wy, QImage::Format_RGB32);
 			bool ok = reader.read(&img);
 			if(!ok) {
-				cout << "Failed reading texture: " << qPrintable(reader.fileName()) << qPrintable(reader.errorString()) <<  endl;
+				//cout << "Failed reading texture: " << qPrintable(reader.fileName()) << qPrintable(reader.errorString()) <<  endl;
 				return false;
 			}
 			img = img.mirrored();
