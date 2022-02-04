@@ -509,7 +509,7 @@ quint32 ObjLoader::getTriangles(quint32 size, Triangle *faces) {
 
 	current_tri_pos = cpos;
 
-	if (count == 0)
+	//if (count == 0)
 		//std::cout << "faces read: " << n_triangles << std::endl;
 
 	return count;
