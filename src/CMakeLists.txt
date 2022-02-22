@@ -80,6 +80,7 @@ foreach(lib ${static_libs})
 	if (EXISTS "${QLIBJPEG_PATH}")
 		message(STATUS "Linking ${LIB_PREFIX}qjpeg.${LIB_EXT}")
 		list(APPEND ADDITIONAL_LIBS "${QLIBJPEG_PATH}")
+        set_property(GLOBAL PROPERTY USE_NEXUS_STATIC_LIBJPEG "YES")
 	endif()
 endforeach()
 
