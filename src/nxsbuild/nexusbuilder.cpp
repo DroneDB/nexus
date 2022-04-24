@@ -776,15 +776,18 @@ void NexusBuilder::createMeshLevel(KDTreeSoup *input, StreamSoup *output, int le
 	if(level > 0)
 		atlas.flush(level-1);
 
+	// TODO: we currently are unable to catch segfaults
+	// due to possible bad inputs if we run this on multiple threads
 
-	QThreadPool pool;
-	pool.setMaxThreadCount(n_threads);
+	// QThreadPool pool;
+	// pool.setMaxThreadCount(n_threads);
 
 	for(uint block = 0; block < input->nBlocks(); block++) {
-		Worker *worker = new Worker(*this, input, output, block, level);
-		pool.start(worker);
+		// Worker *worker = new Worker(*this, input, output, block, level);
+		// pool.start(worker);
+		this->processBlock(input, output, block, level);
 	}
-	pool.waitForDone();
+	// pool.waitForDone();
 }
 
 
