@@ -420,7 +420,7 @@ QImage NexusBuilder::extractNodeTex(TMesh &mesh, int level, float &error, float 
 	}
 
 	{
-		QMutexLocker locker(&m_atlas);
+		// QMutexLocker locker(&m_atlas);
 		//	static int boxid = 0;
 		QPainter painter(&image);
 		//convert tex coordinates using mapping
@@ -573,7 +573,7 @@ void NexusBuilder::processBlock(KDTreeSoup *input, StreamSoup *output, uint bloc
 
 	int ntriangles = 0;
 	{
-		QMutexLocker locker(&m_input);
+		//QMutexLocker locker(&m_input);
 		Soup soup = input->get(block); //soup is memory allocated by input, lock is needed.
 		assert(soup.size() < (1<<16));
 		if(soup.size() == 0) return;
@@ -634,7 +634,7 @@ void NexusBuilder::processBlock(KDTreeSoup *input, StreamSoup *output, uint bloc
 			Texture t;
 
 			{
-				QMutexLocker locker(&m_textures);
+				//QMutexLocker locker(&m_textures);
 				t.offset = nodeTex.size()/NEXUS_PADDING;
 
 				output_pixels += nodetex.width()*nodetex.height();
@@ -652,7 +652,7 @@ void NexusBuilder::processBlock(KDTreeSoup *input, StreamSoup *output, uint bloc
 				nodeTex.seek(size);
 			}
 			{
-				QMutexLocker locker(&m_builder);
+				//QMutexLocker locker(&m_builder);
 				textures.push_back(t);
 				for(Patch &patch: node_patches)
 					patch.texture = textures.size()-1; //last texture inserted
@@ -681,7 +681,7 @@ void NexusBuilder::processBlock(KDTreeSoup *input, StreamSoup *output, uint bloc
 	quint32 chunk;
 	//done serializing, move the data to the chunk.
 	{
-		QMutexLocker locker(&m_chunks);
+		//QMutexLocker locker(&m_chunks);
 		chunk = chunks.addChunk(mesh_size);
 		uchar *chunk_buffer = chunks.getChunk(chunk);
 		memcpy(chunk_buffer, buffer, mesh_size);
@@ -704,19 +704,21 @@ void NexusBuilder::processBlock(KDTreeSoup *input, StreamSoup *output, uint bloc
 		if(!hasTextures()) {
 			mesh1.lockVertices();
 			{ //needed only if Mesh::QUADRICS
-				QMutexLocker locker(&m_texsimply);
+				//QMutexLocker locker(&m_texsimply);
 				mesh1.quadricInit();
 			}
+
 			error = mesh1.simplify(ntriangles*scaling, Mesh::QUADRICS);
 			nface = mesh1.fn;
 
 		} else {
-			QMutexLocker locker(&m_texsimply);
+			//QMutexLocker locker(&m_texsimply);
 			int nvert = ntriangles*scaling;
 
 			if(skipSimplifyLevels > 0) {
 				nvert = ntriangles;
 			}
+
 			float e = mesh.simplify(nvert, TMesh::QUADRICS);
 			if(!useNodeTex)
 				error = e;
@@ -727,7 +729,7 @@ void NexusBuilder::processBlock(KDTreeSoup *input, StreamSoup *output, uint bloc
 
 	quint32 current_node;
 	{
-		QMutexLocker locker(&m_builder);
+		//QMutexLocker locker(&m_builder);
 
 		//patches will be reverted later, but the local order is important because of triangle_offset
 		quint32 patch_offset = patches.size();
@@ -761,7 +763,7 @@ void NexusBuilder::processBlock(KDTreeSoup *input, StreamSoup *output, uint bloc
 	}
 
 	{
-		QMutexLocker locker(&m_output);
+		//QMutexLocker locker(&m_output);
 		for(int i = 0; i < nface; i++) {
 			Triangle &t = triangles[i];
 			if(!t.isDegenerate())
