@@ -153,9 +153,9 @@ void NexusBuilder::create(KDTree *tree, Stream *stream, uint top_node_size) {
 
 		createLevel(tree, stream, level);
 		level++;
-		if(skipSimplifyLevels <= 0 && last_top_level_size != 0 && stream->size()/(float)last_top_level_size > 0.7f) {
-			//cout << "Stream: " << stream->size() << " Last top level size: " << last_top_level_size << endl;
-			//cout << "Larger top level, most probably to high parametrization fragmentation.\n";
+		if(skipSimplifyLevels <= 0 && last_top_level_size != 0 && stream->size()/(float)last_top_level_size > 0.9f) {
+			// cout << "Stream: " << stream->size() << " Last top level size: " << last_top_level_size << endl;
+			// cout << "Larger top level, most probably to high parametrization fragmentation.\n";
 			break;
 		}
 		last_top_level_size = stream->size();
@@ -318,7 +318,7 @@ QImage NexusBuilder::extractNodeTex(TMesh &mesh, int level, float &error, float 
 		}
 		bool too_large = false;
 		for(auto s: sizes) {
-			if(s[0] > maxSize[0] || s[1] > maxSize[1])
+			if(s[0] >= maxSize[0] || s[1] >= maxSize[1])
 				too_large = true;
 		}
 		if(too_large) { //TODO the packer should simply return false
@@ -563,7 +563,6 @@ protected:
 
 
 void NexusBuilder::processBlock(KDTreeSoup *input, StreamSoup *output, uint block, int level) {
-
 	TMesh mesh;
 	TMesh tmp; //this is needed saving a mesh with vertices on seams duplicated., and for node tex coordinates to be rearranged
 
@@ -715,9 +714,11 @@ void NexusBuilder::processBlock(KDTreeSoup *input, StreamSoup *output, uint bloc
 			//QMutexLocker locker(&m_texsimply);
 			int nvert = ntriangles*scaling;
 
-			if(skipSimplifyLevels > 0) {
+			if(skipSimplifyLevels > 0)
 				nvert = ntriangles;
-			}
+
+			else if(nvert < 64) //don't simplify too much!
+				nvert = 64;
 
 			float e = mesh.simplify(nvert, TMesh::QUADRICS);
 			if(!useNodeTex)
