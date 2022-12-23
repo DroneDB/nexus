@@ -480,6 +480,11 @@ QImage NexusBuilder::extractNodeTex(TMesh &mesh, int level, float &error, float 
 	}
 
 	image = image.mirrored();
+	if (image.width() > 1024 || image.height() > 1024){
+		int maxDim = std::max<int>(image.width(), image.height());
+		float ratio = 1024.0f / (float)maxDim;
+		image = image.scaled(image.width() * ratio, image.height() * ratio, Qt::KeepAspectRatio);
+	}
 	//static int imgcount = 0;
 	//if (!image.save(QString("d:\\OUT_test_%1.jpg").arg(imgcount++))) std::cerr << "FAILED";
 	return image;
