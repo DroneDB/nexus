@@ -16,7 +16,7 @@ GNU General Public License (http://www.gnu.org/licenses/gpl.txt)
 for more details.
 */
 #include "plyloader.h"
-
+#include <math.h>
 using namespace vcg;
 using namespace vcg::ply;
 
@@ -115,7 +115,7 @@ PlyLoader::PlyLoader(QString filename):
 	current_triangle(0),
 	current_vertex(0) {
 
-	int val = pf.Open(filename.toLatin1().data(), PlyFile::MODE_READ);
+	int val = pf.Open(filename.toLocal8Bit().data(), PlyFile::MODE_READ);
 	if(val == -1) {
 		int error = pf.GetError();
 		throw QString("could not open file " + filename + ". Error: %1").arg(error);
@@ -139,7 +139,7 @@ PlyLoader::PlyLoader(QString filename):
 				if(bufstr[i]!='\t' && bufstr[i]>=32 && bufstr[i]<=126 )	bufclean.push_back(bufstr[i]);
 
 			char buf2[255];
-			ply::interpret_texture_name( bufclean.c_str(),filename.toLatin1().data(), buf2 );
+			ply::interpret_texture_name( bufclean.c_str(),filename.toLocal8Bit().data(), buf2);
 			LoadTexture tex;
 			tex.filename = QString(buf2).trimmed();
 			texture_filenames.push_back(tex);
@@ -179,7 +179,7 @@ void PlyLoader::init() {
 	if(pf.AddToRead(plyprop1[0])==-1 ||
 			pf.AddToRead(plyprop1[1])==-1 ||
 			pf.AddToRead(plyprop1[2])==-1) {
-		
+
 		if(pf.AddToRead(doublecoords[0])==-1 ||
 				pf.AddToRead(doublecoords[1])==-1 ||
 				pf.AddToRead(doublecoords[2])==-1) {
@@ -209,8 +209,10 @@ void PlyLoader::init() {
 	error = pf.AddToRead(plyprop1[13]);
 	pf.AddToRead(plyprop1[14]);
 
-	if(error ==  vcg::ply::E_NOERROR)
+	if(error ==  vcg::ply::E_NOERROR) {
 		has_textures = true;
+		has_vertex_tex_coords = true;
+	}
 
 	//these calls will fail silently if no normal is present
 	if(!has_faces) { //skip normals for triangle mesh
@@ -265,7 +267,7 @@ void PlyLoader::cacheVertices() {
 			v.t[0] = vertex.t[0];
 			v.t[1] = vertex.t[1];
 		}
-		
+
 		if(quantization) {
 			quantize(v.v[0]);
 			quantize(v.v[1]);
@@ -303,24 +305,23 @@ quint32 PlyLoader::getTriangles(quint32 size, Triangle *buffer) {
 			if(v < 0 || v >= nVertices())
 				throw QString("Bad index in triangle list.");
 			Vertex &vertex = vertices[face.f[k]];
-			vertex.t[0] = face.t[k*2];
-			vertex.t[1] = face.t[k*2+1];
+			if(!has_vertex_tex_coords) {
+				vertex.t[0] = face.t[k*2];
+				vertex.t[1] = face.t[k*2+1];
+			}
 
 			if (has_textures) {
-				while (vertex.t[0] > 1.0f)
-					vertex.t[0] -= 1.0f;
-				while (vertex.t[1] > 1.0f)
-					vertex.t[1] -= 1.0f;
-				while (vertex.t[0] < 0.0f)
-					vertex.t[0] += 1.0f;
-				while (vertex.t[1] < 0.0f)
-					vertex.t[1] += 1.0f;
+				float n;
+				if(vertex.t[0] != 1.0)
+					vertex.t[0] = modf(vertex.t[0], &n);
+				if(vertex.t[1] != 1.0)
+					vertex.t[1] = modf(vertex.t[1], &n);
 			}
 
 			current.vertices[k] = vertex;
 		}
 		//TODO! detect complicated texture coordinates
-		
+
 		current.node = 0;
 		current.tex = face.texNumber + texOffset;
 
@@ -339,7 +340,7 @@ quint32 PlyLoader::getVertices(quint32 size, Splat *splats) {
 	if(current_triangle > n_triangles) return 0;
 
 	PlyVertex vertex;
-	
+
 	Splat v;
 	v.node = 0;
 	v.c[3] = 255;
