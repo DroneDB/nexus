@@ -261,7 +261,7 @@ QImage NexusBuilder::extractNodeTex(TMesh &mesh, int level, float &error, float 
 
 	//erase boxes assigned to no texture, and remap vertex_to_box
 	int count = 0;
-	std::vector<int> remap(mesh.vert.size(), -1);
+	std::vector<int> remap(n_boxes, -1);
 	for(int i = 0; i < n_boxes; i++) {
 		if(box_texture[i] == -1)
 			continue;
@@ -271,8 +271,12 @@ QImage NexusBuilder::extractNodeTex(TMesh &mesh, int level, float &error, float 
 	}
 	boxes.resize(count);
 	box_texture.resize(count);
-	for(int &b: vertex_to_box)
-		b = remap[b];
+	for(int &b: vertex_to_box) {
+		if(b >= 0 && b < n_boxes)
+			b = remap[b];
+		else
+			b = -1;
+	}
 
 	std::vector<vcg::Point2i> sizes(boxes.size());
 	std::vector<vcg::Point2i> origins(boxes.size());
@@ -288,9 +292,11 @@ QImage NexusBuilder::extractNodeTex(TMesh &mesh, int level, float &error, float 
 			}
 		}
 		int tex = box_texture[b];
+		if(tex < 0) continue;
 
 		float w = atlas.width(tex, level); //img->size().width();
 		float h = atlas.height(tex, level); //img->size().height();
+		if(w <= 0 || h <= 0) continue;
 		float px = 1/(float)w;
 		float py = 1/(float)h;
 		box.Offset(vcg::Point2f(px, py));
@@ -358,7 +364,7 @@ QImage NexusBuilder::extractNodeTex(TMesh &mesh, int level, float &error, float 
 		auto &p = mesh.vert[i];
 		auto &uv = p.T().P();
 		int b = vertex_to_box[i];
-		if(b == -1) {
+		if(b == -1 || b >= (int)origins.size() || b >= (int)mapping.size() || b >= (int)box_texture.size()) {
 			uv = vcg::Point2f(0.0f, 0.0f);
 			continue;
 		}
@@ -366,8 +372,16 @@ QImage NexusBuilder::extractNodeTex(TMesh &mesh, int level, float &error, float 
 		vcg::Point2i m = mapping[b];
 
 		int tex = box_texture[b];
+		if(tex < 0) {
+			uv = vcg::Point2f(0.0f, 0.0f);
+			continue;
+		}
 		float w = atlas.width(tex, level);
 		float h = atlas.height(tex, level);
+		if(w <= 0 || h <= 0) {
+			uv = vcg::Point2f(0.0f, 0.0f);
+			continue;
+		}
 		float px = 1/(float)w;
 		float py = 1/(float)h;
 
@@ -413,6 +427,7 @@ QImage NexusBuilder::extractNodeTex(TMesh &mesh, int level, float &error, float 
 	for(int i = 0; i < mesh.face.size(); i++) {
 		auto &face = mesh.face[i];
 		int b = vertex_to_box[face.V(0) - &(mesh.vert[0])];
+		if(b < 0 || b >= (int)origins.size()) continue;
 		vcg::Point2i &o = origins[b];
 		vcg::Point2i m = mapping[b];
 		auto V0 = face.V(0)->T().P();
@@ -435,11 +450,13 @@ QImage NexusBuilder::extractNodeTex(TMesh &mesh, int level, float &error, float 
 		color[0] = ((boxid % 16)*135)%127 + 127; */
 
 			int source = box_texture[i];
+			if(source < 0) continue;
 			vcg::Point2i &o = origins[i];
 			vcg::Point2i &s = sizes[i];
 
 			QImage rect = atlas.read(source, level, QRect(o[0], o[1], s[0], s[1]));
-			painter.drawImage(mapping[i][0], mapping[i][1], rect);
+			if(i < (int)mapping.size())
+				painter.drawImage(mapping[i][0], mapping[i][1], rect);
 
 			//		painter.fillRect(mapping[i][0], mapping[i][1], s[0], s[1], QColor(color[0], color[1], color[2]));
 			//		boxid++;
@@ -600,7 +617,6 @@ void NexusBuilder::processBlock(KDTreeSoup *input, StreamSoup *output, uint bloc
 		mesh_size = mesh1.serializedSize(header.signature);
 
 	} else {
-
 		input->lock(mesh, block);
 		//we need to replicate vertices where textured seams occours
 

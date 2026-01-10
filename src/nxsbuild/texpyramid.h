@@ -90,8 +90,16 @@ public:
 	QImage read(int tex, int level, QRect region);
 	void buildLevel(int level);
 
-	int width(int tex, int level) { return pyramids[tex].levels[level].width; }
-	int height(int tex, int level) { return pyramids[tex].levels[level].height; }
+	int width(int tex, int level) { 
+		if(tex < 0 || tex >= (int)pyramids.size()) return 1;
+		if(level < 0 || level >= (int)pyramids[tex].levels.size()) return 1;
+		return pyramids[tex].levels[level].width; 
+	}
+	int height(int tex, int level) { 
+		if(tex < 0 || tex >= (int)pyramids.size()) return 1;
+		if(level < 0 || level >= (int)pyramids[tex].levels.size()) return 1;
+		return pyramids[tex].levels[level].height; 
+	}
 	void flush(int level);
 	void pruneCache();
 	void addImg(Index index, QImage img);

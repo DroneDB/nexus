@@ -365,6 +365,9 @@ void KDTreeSoup::pushTriangle(Triangle &t) {
 double KDTreeSoup::weight(Triangle &t) {
 	if(textures.size() == 0)
 		return 0;
+	// Skip weight calculation for triangles without valid texture
+	if(t.tex < 0 || t.tex >= (int)textures.size())
+		return 0;
 	Vertex &v0 = t.vertices[0];
 	Vertex &v1 = t.vertices[1];
 	Vertex &v2 = t.vertices[2];

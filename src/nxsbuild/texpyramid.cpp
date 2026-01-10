@@ -200,6 +200,7 @@ bool TexPyramid::init(int tex, TexAtlas *c, LoadTexture &file) {
 }
 
 QImage TexPyramid::read(int level, QRect region) {
+	if(level < 0 || level >= (int)levels.size()) return QImage();
 	return levels[level].read(region);
 }
 
@@ -237,6 +238,7 @@ bool TexAtlas::addTextures(std::vector<LoadTexture> &textures) {
 }
 
 QImage TexAtlas::read(int tex, int level, QRect region) {
+	if(tex < 0 || tex >= (int)pyramids.size()) return QImage();
 	return pyramids[tex].read(level, region);
 }
 
