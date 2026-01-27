@@ -156,7 +156,6 @@ void Extractor::save(QString output, nx::Signature &signature) {
 	header.n_patches = patches.size();
 	header.n_textures = textures.size();
 
-
 	quint64 size = sizeof(nx::Header)  +
 			nodes.size()*sizeof(nx::Node) +
 			patches.size()*sizeof(nx::Patch) +
@@ -170,9 +169,12 @@ void Extractor::save(QString output, nx::Signature &signature) {
 	//TODO should actually remove textures not used anymore.
 
 	file.write((char *)&header, sizeof(header));
-	file.write((char *)&*nodes.begin(), sizeof(nx::Node)*nodes.size());
-	file.write((char *)&*patches.begin(), sizeof(nx::Patch)*patches.size());
-	file.write((char *)&*textures.begin(), sizeof(nx::Texture)*textures.size());
+	if(!nodes.empty())
+		file.write((char *)&*nodes.begin(), sizeof(nx::Node)*nodes.size());
+	if(!patches.empty())
+		file.write((char *)&*patches.begin(), sizeof(nx::Patch)*patches.size());
+	if(!textures.empty())
+		file.write((char *)&*textures.begin(), sizeof(nx::Texture)*textures.size());
 	file.seek(size);
 
 	for(uint i = 0; i < node_remap.size()-1; i++) {
@@ -224,9 +226,12 @@ void Extractor::save(QString output, nx::Signature &signature) {
 	}
 
 	file.seek(sizeof(nx::Header));
-	file.write((char *)&*nodes.begin(), sizeof(nx::Node)*nodes.size());
-	file.write((char *)&*patches.begin(), sizeof(nx::Patch)*patches.size());
-	file.write((char *)&*textures.begin(), sizeof(nx::Texture)*textures.size());
+	if(!nodes.empty())
+		file.write((char *)&*nodes.begin(), sizeof(nx::Node)*nodes.size());
+	if(!patches.empty())
+		file.write((char *)&*patches.begin(), sizeof(nx::Patch)*patches.size());
+	if(!textures.empty())
+		file.write((char *)&*textures.begin(), sizeof(nx::Texture)*textures.size());
 	file.close();
 }
 
@@ -285,7 +290,8 @@ void Extractor::compress(QFile &file, nx::Signature &signature, nx::Node &node, 
 		//cout << "C size: " << coder.color_size << endl;
 		//cout << "I size: " << coder.face_size << endl;
 
-		file.write((char *)&*coder.stream.buffer, coder.stream.size());
+		if(coder.stream.size() > 0)
+			file.write((char *)&*coder.stream.buffer, coder.stream.size());
 		//padding
 		quint64 size = pad(file.pos()) - file.pos();
 		char tmp[NEXUS_PADDING];
@@ -349,8 +355,8 @@ void Extractor::compress(QFile &file, nx::Signature &signature, nx::Node &node, 
 		//cout << "Face bpv; " << 8.0f*encoder.index.size/nvert << " size: " << encoder.index.size << endl; */
 
 
-
-		file.write((char *)&*encoder.stream.data(), encoder.stream.size());
+		if(encoder.stream.size() > 0)
+			file.write((char *)&*encoder.stream.data(), encoder.stream.size());
 		quint64 size = pad(file.pos()) - file.pos();
 		char tmp[NEXUS_PADDING];
 		file.write(tmp, size);
