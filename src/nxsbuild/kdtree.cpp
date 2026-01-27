@@ -260,6 +260,13 @@ void KDTreeSoup::clear() {
 void KDTreeSoup::findRealMiddle(KDCell &node) {
 	Soup soup = get(node.block);
 
+	// Handle empty soup case - use node box center as fallback
+	if(soup.size() == 0) {
+		node.split = node.box.MaxDim();
+		node.middle = node.box.Center()[node.split];
+		return;
+	}
+
 	vcg::Box3f box;
 	for(quint32 i = 0; i < soup.size(); i++) {
 		Triangle &triangle = soup[i];
