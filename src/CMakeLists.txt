@@ -1,4 +1,4 @@
-cmake_minimum_required(VERSION 3.1)
+cmake_minimum_required(VERSION 3.10)
 project(nexus)
 
 set(HEADERS
@@ -20,7 +20,9 @@ set(HEADERS
 	nxsbuild/stlloader.h
 	nxsbuild/texpyramid.h
 	nxsbuild/tmesh.h
+	nxsbuild/colormap.h
 	nxsbuild/tsploader.h
+	nxsbuild/tsloader.h
 	nxsbuild/vcgloader.h
 	nxsedit/extractor.h
 	nxszip/bitstream.h
@@ -46,7 +48,9 @@ set(SOURCES
 	nxsbuild/stlloader.cpp
 	nxsbuild/texpyramid.cpp
 	nxsbuild/tmesh.cpp
+	nxsbuild/colormap.cpp
 	nxsbuild/tsploader.cpp
+	nxsbuild/tsloader.cpp
 	nxsedit/extractor.cpp
 	nxszip/abitstream.cpp
 	nxszip/atunstall.cpp
@@ -58,7 +62,9 @@ add_library(nexus STATIC
 	${SOURCES} ${HEADERS})
 
 target_include_directories(nexus PUBLIC
-	${CMAKE_CURRENT_SOURCE_DIR})
+	$<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}>
+	$<INSTALL_INTERFACE:include>
+)
 
 set(ADDITIONAL_LIBS "")
 set(LIB_EXT "a")
@@ -91,3 +97,12 @@ target_link_libraries(nexus PUBLIC vcglib corto Qt5::Core Qt5::Gui ${ADDITIONAL_
 if (WIN32)
 	target_compile_definitions(nexus PUBLIC NOMINMAX)
 endif()
+
+foreach(DIR common nxsbuild nxsedit nxsview nxszip)
+	install(DIRECTORY ${DIR}
+		DESTINATION include
+		FILES_MATCHING PATTERN "*.h")
+endforeach()
+install(TARGETS nexus
+	EXPORT nexusTargets
+	LIBRARY DESTINATION lib)

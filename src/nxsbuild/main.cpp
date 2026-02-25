@@ -53,6 +53,8 @@ int main(int argc, char *argv[]) {
 	QString output("");                 //output file
 	QString mtl;
 	QString translate;
+	QString scalate;
+	QString colormap;
 	bool center = false;
 
 
@@ -118,7 +120,11 @@ int main(int argc, char *argv[]) {
 	opt.addOption('r', "ram", "max ram used (in MegaBytes), default 2000 (WARNING: just an approximation)", &ram_buffer);
 	opt.addOption('w', "workers", "number of workers: default = 4", &n_threads);
 	opt.addOption('T', "origin", "new origin for the model in the format X:Y:Z", &translate);
+	opt.addOption('W', "scale", "scale vector (after origin subtraction) X:Y:Z", &scalate);
 	opt.addSwitch('G', "center", "set origin in the bounding box center of the input meshes", &center);
+
+	//ts specific options
+	opt.addOption('K', "colormap", "for .ts files: property:colormap such as temperature:viridis (or plasma, spectral)", &colormap);
 	opt.parse();
 
 	//Check parameters are correct
@@ -144,7 +150,11 @@ int main(int argc, char *argv[]) {
 		}
 	}
 
-	if(output == "") output = inputs[0].left(inputs[0].length()-4);
+
+	if(output == "") {
+		int last = inputs[0].lastIndexOf(".");
+		output = inputs[0].left(last);
+	}
 	if(!output.endsWith(".nxs"))
 		output += ".nxs";
 
@@ -175,6 +185,26 @@ int main(int argc, char *argv[]) {
 		}
 	}
 
+
+	vcg::Point3d scale(0, 0, 0);
+	if(!scalate.isEmpty()) {
+		QStringList p = scalate.split(':');
+		if(p.size() != 3) {
+			cerr << "Malformed scale parameter, expecting X:Y:Z" << endl;
+			return -1;
+		}
+
+		bool ok = false;
+		for(int i = 0; i < 3; i++) {
+			scale[i] = p[i].toDouble(&ok);
+			if(!ok) {
+				cerr << "Malformed scale parameter, expecting X:Y:Z" << endl;
+				return -1;
+			}
+		}
+	}
+
+
 	Stream *stream = 0;
 	KDTree *tree = 0;
 	int returncode = 0;
@@ -197,6 +227,14 @@ int main(int argc, char *argv[]) {
 		else
 			stream = new StreamSoup("cache_stream");
 
+		if(!colormap.isNull()) {
+			stream->colormap = colormap.split(":");
+			if(stream->colormap.size() != 2) {
+				throw QString("Format for color map is 'property:colormap'");
+			}
+			colors = true;
+		}
+
 		stream->setVertexQuantization(vertex_quantization);
 		stream->setMaxMemory(max_memory);
 		if(center) {
@@ -207,6 +245,8 @@ int main(int argc, char *argv[]) {
 			stream->origin = box.Center();
 		} else
 			stream->origin = origin;
+		if(!scalate.isEmpty())
+			stream->scale = scale;
 
 		vcg::Point3d &o = stream->origin;
 		if(o[0] != 0.0 || o[1] != 0.0 || o[2] != 0.0) {
