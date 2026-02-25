@@ -18,7 +18,7 @@ for more details.
 #define _FILE_OFFSET_BITS 64
 
 #include "nexusdata.h"
-#include "qtnexusfile.h"
+#include "nexusfile_io.h"
 #include <vcg/space/line3.h>
 #include <vcg/space/intersection3.h>
 
@@ -40,7 +40,7 @@ uint16_t *NodeData::faces(Signature &sig, uint32_t nvert, char *mem) {
 
 
 NexusData::NexusData(): nodes(0), patches(0), textures(0), nodedata(0), texturedata(0), nroots(0) {
-	file = new QTNexusFile();
+	file = new NexusFileIO();
 }
 
 NexusData::~NexusData() {
@@ -65,15 +65,17 @@ void NexusData::close() {
 }
 
 void NexusData::flush() {
+	if(!nodes) return;
+
 	//flush
 	for(unsigned int i = 0; i < header.n_nodes; i++)
 		delete nodedata[i].memory;
 
-	delete []nodes;
-	delete []patches;
-	delete []textures;
-	delete []nodedata;
-	delete []texturedata;
+	delete []nodes;      nodes = nullptr;
+	delete []patches;    patches = nullptr;
+	delete []textures;   textures = nullptr;
+	delete []nodedata;   nodedata = nullptr;
+	delete []texturedata; texturedata = nullptr;
 }
 
 void NexusData::loadHeader() {
@@ -266,31 +268,6 @@ uint64_t NexusData::loadRam(uint32_t n) {
 
 			//loadImageFromData(data, t);
 
-			/*
-			QImage img;
-			bool success = img.loadFromData((uchar *)data.memory, texture.getSize());
-			file->unmap((uchar *)data.memory);
-
-			if(!success) {
-				cerr << "Failed loading texture" << endl;
-				exit(0);
-			}
-
-			img = img.convertToFormat(QImage::Format_RGBA8888);
-			data.width = img.width();
-			data.height = img.height();
-
-			int imgsize = data.width*data.height*4;
-			data.memory = new char[imgsize];
-
-			//flip memory for texture
-			int linesize = img.width()*4;
-			char *mem = data.memory + linesize*(img.height()-1);
-			for(int i = 0; i < img.height(); i++) {
-				memcpy(mem, img.scanLine(i), linesize);
-				mem -= linesize;
-			}
-			*/
 			int imgsize = data.width * data.height * 4;
 			size += imgsize;
 		}

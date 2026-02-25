@@ -1,0 +1,29 @@
+/* This Source Code Form is subject to the terms of the Mozilla Public
+ * License, v. 2.0. If a copy of the MPL was not distributed with this
+ * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
+#ifndef TESTAREA_H
+#define TESTAREA_H
+
+#include <string>
+#include <filesystem>
+
+namespace fs = std::filesystem;
+
+class TestArea
+{
+    std::string name;
+
+public:
+    TestArea(const std::string &name, bool recreateIfExists = false);
+
+    fs::path getPath(const fs::path &p = "");
+    fs::path getFolder(const fs::path &subfolder = "");
+    fs::path downloadTestAsset(const std::string &url, const std::string &filename, bool overwrite = false);
+
+    /**
+     * @brief Clears all test areas by deleting the entire nexus_test_areas folder.
+     */
+    static void clearAll();
+};
+
+#endif // TESTAREA_H

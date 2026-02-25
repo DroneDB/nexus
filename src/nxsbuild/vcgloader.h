@@ -3,6 +3,8 @@
 
 #include "meshloader.h"
 #include "wrap/io_trimesh/import.h"
+#include <string>
+#include <cstdint>
 
 template <typename Mesh> class VcgLoader: public MeshLoader {
 public:
@@ -13,11 +15,11 @@ public:
 
 	VcgLoader() {}
 
-	VcgLoader(QString filename) {
+	VcgLoader(std::string filename) {
 		Mesh *m = new Mesh;
 		int loadmask = 0;
-		if(vcg::tri::io::Importer<Mesh>::Open(*m, filename.toStdString().c_str(), loadmask)!=0)
-			throw QString("Failed loading file: "  + filename);
+		if(vcg::tri::io::Importer<Mesh>::Open(*m, filename.c_str(), loadmask)!=0)
+			throw std::runtime_error("Failed loading file: " + filename);
 		has_colors = loadmask | vcg::tri::io::Mask::IOM_VERTCOLOR;
 		has_normals = loadmask | vcg::tri::io::Mask::IOM_VERTNORMAL;
 		has_textures = (loadmask | vcg::tri::io::Mask::IOM_VERTTEXCOORD);
@@ -40,12 +42,12 @@ public:
 
 		//fill in the texture filenames
 	}
-	void setMaxMemory(quint64) {}
+	void setMaxMemory(uint64_t) {}
 
-	quint32 nVertices() { return mesh->nv; }
-	quint32 nTriangles() { return mesh->nf; }
+	uint32_t nVertices() { return mesh->nv; }
+	uint32_t nTriangles() { return mesh->nf; }
 
-	quint32 getTriangles(quint32 size, Triangle *buffer) {
+	uint32_t getTriangles(uint32_t size, Triangle *buffer) {
 		int count = 0;
 		while(current_face	< mesh->face.size() && count < size) {
 			const FaceType &face = mesh->face[current_face];
@@ -79,7 +81,7 @@ public:
 		return count;
 	}
 
-	quint32 getVertices(quint32 size, Splat *vertex) {
+	uint32_t getVertices(uint32_t size, Splat *vertex) {
 		//todo
 		return 0;
 	}

@@ -1,7 +1,9 @@
 #ifndef EXTRACTOR_H
 #define EXTRACTOR_H
 
-#include <QFile>
+#include <cstdint>
+#include <fstream>
+#include <string>
 
 #include <vcg/math/matrix44.h>
 
@@ -20,17 +22,17 @@ public:
 
 	int levelCount(); //return number of levels in the nexus (assuming it's a constant depth tree)
 	void setMatrix(vcg::Matrix44f m);
-	void selectBySize(quint64 size);
+	void selectBySize(uint64_t size);
 	void selectByLevel(int level); //select up to level included (zero based)
 	void selectByError(float error);
-	void selectByTriangles(quint64 triangles);
+	void selectByTriangles(uint64_t triangles);
 	void dropLevel();
 
-	void save(QString output, nx::Signature &signature);
-	void savePly(QString filename);
-	void saveStl(QString filename);
+	void save(const std::string &output, nx::Signature &signature);
+	void savePly(const std::string &filename);
+	void saveStl(const std::string &filename);
 
-	void saveUnifiedPly(QString filename);
+	void saveUnifiedPly(const std::string &filename);
 
 	virtual float nodeError(uint32_t node, bool &visible);
 	nx::Traversal::Action expand(HeapNode h);
@@ -39,17 +41,17 @@ protected:
 
 	bool transform;
 	vcg::Matrix44f matrix;
-	quint64 max_size, current_size;
+	uint64_t max_size, current_size;
 	float min_error, current_error;
 	int max_level = -1, nlevels = 0;
-	quint64 max_triangles, current_triangles;
+	uint64_t max_triangles, current_triangles;
 
-	quint32 pad(quint32 s);
+	uint32_t pad(uint32_t s);
 	int sinkDistance(int node);
 
-	void compress(QFile &file, nx::Signature &signature, nx::Node &node, nx::NodeData &data, nx::Patch *patches);
+	void compress(std::ofstream &file, nx::Signature &signature, nx::Node &node, nx::NodeData &data, nx::Patch *patches);
 	//counts vertices and faces in the selected mesh.
-	void countElements(quint64 &n_vertices, quint64 &n_faces);
+	void countElements(uint64_t &n_vertices, uint64_t &n_faces);
 };
 
 #endif // EXTRACTOR_H

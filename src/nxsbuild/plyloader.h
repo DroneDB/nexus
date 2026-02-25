@@ -21,33 +21,34 @@ for more details.
 #include "meshloader.h"
 #include "../common/virtualarray.h"
 
-
+#include <string>
+#include <cstdint>
 #include <wrap/ply/plylib.h>
 
 
 class PlyLoader: public MeshLoader {
 public:
-	PlyLoader(QString file);
+	PlyLoader(std::string file);
 	~PlyLoader();
 
-	void setMaxMemory(quint64 max_memory);
-	quint32 getTriangles(quint32 size, Triangle *buffer);
-	quint32 getVertices(quint32 size, Splat *vertex);
+	void setMaxMemory(uint64_t max_memory);
+	uint32_t getTriangles(uint32_t size, Triangle *buffer);
+	uint32_t getVertices(uint32_t size, Splat *vertex);
 
-	quint32 nVertices() { return n_vertices; }
-	quint32 nTriangles() { return n_triangles; }
+	uint32_t nVertices() { return (uint32_t)n_vertices; }
+	uint32_t nTriangles() { return (uint32_t)n_triangles; }
 private:
 	vcg::ply::PlyFile pf;
 	bool double_coords = false;
 	bool has_vertex_tex_coords = false;
-	qint64 vertices_element;
-	qint64 faces_element;
+	int64_t vertices_element;
+	int64_t faces_element;
 
 	VirtualArray<Vertex> vertices;
-	quint64 n_vertices;
-	quint64 n_triangles;
-	quint64 current_triangle;
-	quint64 current_vertex;
+	uint64_t n_vertices;
+	uint64_t n_triangles;
+	uint64_t current_triangle;
+	uint64_t current_vertex;
 
 	void init();
 	void cacheVertices();

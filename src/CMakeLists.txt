@@ -1,13 +1,18 @@
-cmake_minimum_required(VERSION 3.10)
-project(nexus)
+cmake_minimum_required(VERSION 3.16)
+project(nexus_lib)
 
 set(HEADERS
 	${VCGDIR}/wrap/ply/plylib.h
+	common/dag.h
+	common/nxs.h
 	common/cone.h
 	common/signature.h
 	common/nexusdata.h
 	common/nexusfile.h
-	common/qtnexusfile.h
+	common/nexusfile_io.h
+	common/mmap_file.h
+	common/image.h
+	common/logger.h
 	common/traversal.h
 	common/virtualarray.h
 	nxsbuild/kdtree.h
@@ -33,9 +38,12 @@ set(HEADERS
 
 set(SOURCES
 	${VCGDIR}/wrap/ply/plylib.cpp
+	common/nxs.cpp
 	common/cone.cpp
 	common/nexusdata.cpp
-	common/qtnexusfile.cpp
+	common/nexusfile_io.cpp
+	common/mmap_file.cpp
+	common/image.cpp
 	common/traversal.cpp
 	common/virtualarray.cpp
 	nxsbuild/kdtree.cpp
@@ -66,39 +74,27 @@ target_include_directories(nexus PUBLIC
 	$<INSTALL_INTERFACE:include>
 )
 
-set(ADDITIONAL_LIBS "")
-set(LIB_EXT "a")
-set(LIB_PREFIX "lib")
-if (WIN32)
-	set(LIB_EXT "lib")
-	set(LIB_PREFIX "")
-endif()
+target_link_libraries(nexus PUBLIC
+	vcglib
+	corto
+	ZLIB::ZLIB
+	PNG::PNG
+	JPEG::JPEG
+	plog::plog
+)
 
-get_property(qt5loc TARGET Qt5::Core PROPERTY IMPORTED_LOCATION_RELEASE)
-get_filename_component(QT5_BASE ${qt5loc} DIRECTORY)
-set(static_libs "${LIB_PREFIX}qtlibpng.${LIB_EXT}" "${LIB_PREFIX}qtpcre2.${LIB_EXT}" "${LIB_PREFIX}qtfreetype.${LIB_EXT}")
-foreach(lib ${static_libs})
-	if (EXISTS "${QT5_BASE}/${lib}")
-		message(STATUS "Linking ${lib}")
-		list(APPEND ADDITIONAL_LIBS "${QT5_BASE}/${lib}")
-	endif()
-	set(QLIBJPEG_PATH "${QT5_BASE}/../plugins/imageformats/${LIB_PREFIX}qjpeg.${LIB_EXT}")
-	if (EXISTS "${QLIBJPEG_PATH}")
-		message(STATUS "Linking ${LIB_PREFIX}qjpeg.${LIB_EXT}")
-		list(APPEND ADDITIONAL_LIBS "${QLIBJPEG_PATH}")
-        set_property(GLOBAL PROPERTY USE_NEXUS_STATIC_LIBJPEG "YES")
-	endif()
-endforeach()
+target_include_directories(nexus PUBLIC
+	${Stb_INCLUDE_DIR}
+	${BSHOSHANY_THREAD_POOL_INCLUDE_DIRS}
+)
 
-#list(APPEND ADDITIONAL_LIBS "-Wl,--whole-archive -ldl -lrt -lpthread -Wl,--no-whole-archive")
-
-target_link_libraries(nexus PUBLIC vcglib corto Qt5::Core Qt5::Gui ${ADDITIONAL_LIBS})
+set_target_properties(nexus PROPERTIES OUTPUT_NAME "nexus" PREFIX "lib")
 
 if (WIN32)
 	target_compile_definitions(nexus PUBLIC NOMINMAX)
 endif()
 
-foreach(DIR common nxsbuild nxsedit nxsview nxszip)
+foreach(DIR common nxsbuild nxsedit nxszip)
 	install(DIRECTORY ${DIR}
 		DESTINATION include
 		FILES_MATCHING PATTERN "*.h")

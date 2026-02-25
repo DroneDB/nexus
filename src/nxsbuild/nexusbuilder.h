@@ -19,16 +19,17 @@ for more details.
 #define NX_NEXUSBUILDER_H
 
 #include <vector>
-
-#include <QString>
-#include <QFile>
-#include <QMutex>
+#include <string>
+#include <mutex>
+#include <cstdint>
 
 #include <vcg/space/box3.h>
 
 #include "../common/signature.h"
 #include "../common/dag.h"
 #include "../common/virtualarray.h"
+#include "../common/image.h"
+#include "../common/mmap_file.h"
 #include "texpyramid.h"
 
 
@@ -40,13 +41,7 @@ class Stream;
 class StreamSoup;
 class StreamCloud;
 
-class QImage;
 class TMesh;
-
-namespace nx {
-
-class Nexus;
-}
 
 //Structures used for normalization
 struct NodeBox {
@@ -79,14 +74,14 @@ public:
 class NexusBuilder {
 public:
 	enum Components { FACES = 1, NORMALS = 2, COLORS = 4, TEXTURES = 8 };
-	NexusBuilder(quint32 components);
+	NexusBuilder(uint32_t components);
 	NexusBuilder(nx::Signature &sig);
 
 	bool hasNormals() { return header.signature.vertex.hasNormals(); }
 	bool hasColors() { return header.signature.vertex.hasColors(); }
 	bool hasTextures() const { return header.signature.vertex.hasTextures(); }
 
-	void initAtlas(std::vector<QImage>& textures);
+	void initAtlas(std::vector<nx::Image>& textures);
 	bool initAtlas(std::vector<LoadTexture>& textures);
 	void create(KDTree *input, Stream *output, uint top_node_size);
 	void createLevel(KDTree *input, Stream *output, int level);
@@ -94,7 +89,7 @@ public:
 	void createMeshLevel(KDTreeSoup *input, StreamSoup *output, int level);
 
 
-	void setMaxMemory(quint64 m) {
+	void setMaxMemory(uint64_t m) {
 		max_memory = m;
 		chunks.setMaxMemory(m);
 		atlas.cache_max = m;
@@ -104,20 +99,18 @@ public:
 	void saturate();
 
 	void reverseDag();
-	void save(QString filename);
+	void save(std::string filename);
 
-	QMutex m_input;     //locks input stream when building nodes multithread
-	QMutex m_output;    //locks output stream stream when building nodes multithread
-	QMutex m_builder;   //locks builders data (patches, etc.)
-	QMutex m_chunks;    //locks builder chunks (the cache)
-	QMutex m_atlas;     //locks atlas (the cache)
-	QMutex m_texsimply;     //locks the temporary data simplification structure for texture. (UGH)
-
-
-	QMutex m_textures;  //locks  texture temporary file
+	std::mutex m_input;     //locks input stream when building nodes multithread
+	std::mutex m_output;    //locks output stream when building nodes multithread
+	std::mutex m_builder;   //locks builders data (patches, etc.)
+	std::mutex m_chunks;    //locks builder chunks (the cache)
+	std::mutex m_atlas;     //locks atlas (the cache)
+	std::mutex m_texsimply; //locks the temporary data simplification structure for texture.
+	std::mutex m_textures;  //locks texture temporary file
 
 
-	QFile file;
+	nx::MappedFile file;
 
 	VirtualChunks chunks;
 	std::vector<NodeBox> boxes; //a box for each node
@@ -126,12 +119,12 @@ public:
 	std::vector<nx::Node> nodes;
 	std::vector<nx::Patch> patches;
 	std::vector<nx::Texture> textures;
-	std::vector<QString> images;
+	std::vector<std::string> images;
 
-	quint64 input_pixels, output_pixels;
+	uint64_t input_pixels, output_pixels;
 	nx::TexAtlas atlas;
-	QTemporaryFile nodeTex; //texure images for each node stored here.
-	quint64 max_memory;
+	nx::TempMappedFile nodeTex; //texture images for each node stored here.
+	uint64_t max_memory;
 	int n_threads = 4;
 
 	float scaling;
@@ -140,16 +133,16 @@ public:
 	int max_node_triangles = 32000;
 	bool createPowTwoTex;
 	bool deepzoom = false; //use deepzoom style where each node is in a different file.
-	
+
 	//if too many texel per edge, simplification is inhibited, but don't quit prematurely
 	int skipSimplifyLevels = 0;
 
 	void processBlock(KDTreeSoup *input, StreamSoup *output, uint block, int level);
 
-	QImage extractNodeTex(TMesh &mesh, int level, float &error, float &pixelXedge);
+	nx::Image extractNodeTex(TMesh &mesh, int level, float &error, float &pixelXedge);
 	void invertNodes(); //
-	void saturateNode(quint32 n);
-	void optimizeNode(quint32 node, uchar *chunk);
+	void saturateNode(uint32_t n);
+	void optimizeNode(uint32_t node, unsigned char *chunk);
 	void uniformNormals();
 	void appendBorderVertices(uint32_t origin, uint32_t destination, std::vector<NVertex> &vertices);
 

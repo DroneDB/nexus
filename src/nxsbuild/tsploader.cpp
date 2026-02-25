@@ -18,28 +18,28 @@ for more details.
 #include "tsploader.h"
 
 #include <iostream>
+#include <stdexcept>
+
 using namespace std;
 
-
-TspLoader::TspLoader(QString filename) {
+TspLoader::TspLoader(std::string filename) {
 
 	has_colors = true;
 	has_normals = has_textures = false;
 
-	file.setFileName(filename);
-	if(!file.open(QIODevice::ReadOnly))
-		throw QString("could not open file " + filename);
+	file.open(filename, ios::binary);
+	if (!file.is_open())
+		throw std::runtime_error("could not open file " + filename);
 }
 
-Triangle readTriangle(float *tmp) {
+static Triangle readTriangle(float *tmp) {
 	Triangle triangle;
-	uint color_offset = 3 * 3 * 2; //vertices and normals
+	uint32_t color_offset = 3 * 3 * 2; // vertices and normals
 	for (int i = 0; i < 3; i++) {
 		Vertex &vertex = triangle.vertices[i];
 		for (int k = 0; k < 3; k++) {
 			vertex.v[k] = tmp[i * 3 + k];
-
-			vertex.c[k] = 255 * tmp[color_offset + i * 3 + k];
+			vertex.c[k] = (unsigned char)(255 * tmp[color_offset + i * 3 + k]);
 		}
 		vertex.c[3] = 255;
 	}
@@ -47,17 +47,18 @@ Triangle readTriangle(float *tmp) {
 	return triangle;
 }
 
-quint32 TspLoader::getTriangles(quint32 triangle_no, Triangle *buffer) {
+uint32_t TspLoader::getTriangles(uint32_t triangle_no, Triangle *buffer) {
 
-	uint vertex_size = 9 * sizeof(float);
-	uint triangle_size = 3 * vertex_size;
-	uint size = triangle_no * triangle_size;
-	float *tmp = new float[size];
-	quint32 readed = file.read((char *)tmp, size) / triangle_size;
+	uint32_t vertex_size = 9 * sizeof(float);
+	uint32_t triangle_size = 3 * vertex_size;
+	uint32_t size = triangle_no * triangle_size;
+	float *tmp = new float[size / sizeof(float)];
+	file.read((char *)tmp, size);
+	uint32_t readed = (uint32_t)(file.gcount() / triangle_size);
 
 	float *pos = tmp;
-	int count = 0;
-	for (uint i = 0; i < readed; i++) {
+	uint32_t count = 0;
+	for (uint32_t i = 0; i < readed; i++) {
 		Triangle &triangle = buffer[count];
 		triangle = readTriangle(pos);
 		pos += 3 * 9;
@@ -65,7 +66,7 @@ quint32 TspLoader::getTriangles(quint32 triangle_no, Triangle *buffer) {
 		current_triangle++;
 		count++;
 	}
-	delete[]tmp;
+	delete[] tmp;
 
 	return count;
 }

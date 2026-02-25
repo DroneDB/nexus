@@ -16,20 +16,22 @@ GNU General Public License (http://www.gnu.org/licenses/gpl.txt)
 for more details.
 */
 #include "meshloader.h"
-#include <QFileInfo>
+#include <filesystem>
+#include <algorithm>
+
+namespace fs = std::filesystem;
 
 void MeshLoader::quantize(float &value) {
 	if(!quantization) return;
 	value = quantization*(int)(value/quantization);
 }
 
-void MeshLoader::sanitizeTextureFilepath(QString &textureFilepath) {
-  std::replace( textureFilepath.begin(), textureFilepath.end(), QChar('\\'), QChar('/') );
+void MeshLoader::sanitizeTextureFilepath(std::string &textureFilepath) {
+	std::replace(textureFilepath.begin(), textureFilepath.end(), '\\', '/');
 }
 
-void MeshLoader::resolveTextureFilepath(const QString &modelFilepath, QString &textureFilepath) {
-  QFileInfo file(modelFilepath);
-  QString path = file.path();
-
-  textureFilepath = path + "/" + textureFilepath;
+void MeshLoader::resolveTextureFilepath(const std::string &modelFilepath, std::string &textureFilepath) {
+	fs::path modelPath(modelFilepath);
+	fs::path parentDir = modelPath.parent_path();
+	textureFilepath = (parentDir / textureFilepath).string();
 }

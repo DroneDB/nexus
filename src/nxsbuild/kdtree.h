@@ -22,6 +22,8 @@ for more details.
 #include "partition.h"
 #include "meshloader.h"
 #include <vector>
+#include <string>
+#include <cstdint>
 
 class Stream;
 class StreamSoup;
@@ -45,7 +47,7 @@ public:
 };
 
 class KDTree {
-public:    
+public:
 	vcg::Point3f axes[3];
 	float ratio;
 	std::vector<KDCell> cells;
@@ -56,7 +58,7 @@ public:
 	virtual ~KDTree() {}
 
 	void load(Stream *stream);
-	virtual void setMaxMemory(quint64 m) = 0;
+	virtual void setMaxMemory(uint64_t m) = 0;
 	virtual void clear() = 0;
 
 	void setAxes(vcg::Point3f &x, vcg::Point3f &y, vcg::Point3f &z);
@@ -66,13 +68,13 @@ public:
 	int nLeaves() { return block_boxes.size(); }
 	void lock(Mesh &mesh, int block);
 	void lock(TMesh &mesh, int block);
-	bool isInNode(quint32 node, vcg::Point3f &p);
+	bool isInNode(uint32_t node, vcg::Point3f &p);
 	static bool isIn(vcg::Point3f *axes, vcg::Box3f &box, vcg::Point3f &p); //check if point is in the box (using axes) semiopen box.
 
 protected:
 	float adaptive; //from 0 (not adaptive, to 1) fully adaptive.
 
-	virtual quint64 addBlock() = 0;
+	virtual uint64_t addBlock() = 0;
 	virtual void loadElements(Stream *stream) = 0;
 	virtual void findRealMiddle(KDCell &node)  = 0;
 	virtual void splitNode(KDCell &node, KDCell &child0, KDCell &child1) = 0;
@@ -88,30 +90,30 @@ public:
 	double current_weight = 0;
 	double max_weight = 0;
 	float texelWeight = 0.1;   //for computing max  weight per block
-	KDTreeSoup(QString prefix, float adapt = 0.333): VirtualTriangleSoup(prefix), KDTree(adapt) {}
-	void setMaxMemory(quint64 m) { return VirtualTriangleSoup::setMaxMemory(m); }
-	void setMaxWeight(quint32 weight) { max_weight = double(weight); }
+	KDTreeSoup(std::string prefix, float adapt = 0.333): VirtualTriangleSoup(prefix), KDTree(adapt) {}
+	void setMaxMemory(uint64_t m) { return VirtualTriangleSoup::setMaxMemory(m); }
+	void setMaxWeight(uint32_t weight) { max_weight = double(weight); }
 	void clear();
 	void pushTriangle(Triangle &t);
 	double weight(Triangle &t);
 
 protected:
-	quint64 addBlock() { return VirtualTriangleSoup::addBlock(); }
+	uint64_t addBlock() { return VirtualTriangleSoup::addBlock(); }
 	void loadElements(Stream *stream);
 	void findRealMiddle(KDCell &node);
 	void splitNode(KDCell &node, KDCell &child0, KDCell &child1);
-	static int assign(Triangle &t, quint32 &mask, vcg::Point3f axis, float middle);
+	static int assign(Triangle &t, uint32_t &mask, vcg::Point3f axis, float middle);
 };
 
 class KDTreeCloud: public VirtualVertexCloud, public KDTree {
 public:
-	KDTreeCloud(QString prefix, float adapt = 0.333): VirtualVertexCloud(prefix), KDTree(adapt) {}
-	void setMaxMemory(quint64 m) { return VirtualVertexCloud::setMaxMemory(m); }
+	KDTreeCloud(std::string prefix, float adapt = 0.333): VirtualVertexCloud(prefix), KDTree(adapt) {}
+	void setMaxMemory(uint64_t m) { return VirtualVertexCloud::setMaxMemory(m); }
 	void clear();
 	void pushVertex(Splat &v);
 
 protected:
-	quint64 addBlock() { return VirtualVertexCloud::addBlock(); }
+	uint64_t addBlock() { return VirtualVertexCloud::addBlock(); }
 	void load(StreamSoup &stream);
 	void loadElements(Stream *stream);
 	void findRealMiddle(KDCell &node);

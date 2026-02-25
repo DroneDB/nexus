@@ -1,0 +1,19 @@
+{
+  "name": "nexus",
+  "version-string": "4.3",
+  "description": "Nexus - scalable visualization of huge 3D models",
+  "dependencies": [
+    "zlib",
+    "libpng",
+    "libjpeg-turbo",
+    "stb",
+    "plog",
+    "bshoshany-thread-pool",
+    {
+      "name": "gtest",
+      "platform": "!uwp"
+    },
+    "cpr",
+    "minizip-ng"
+  ]
+}

@@ -15,8 +15,11 @@ MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
 GNU General Public License (http://www.gnu.org/licenses/gpl.txt)
 for more details.
 */
-#include <QDebug>
-#include <QFileInfo>
+
+#include <filesystem>
+#include <algorithm>
+
+#include "../common/logger.h"
 
 #include "meshstream.h"
 #include "meshloader.h"
@@ -32,6 +35,7 @@ for more details.
 #include <iostream>
 
 using namespace std;
+namespace fs = std::filesystem;
 
 Stream::Stream():
 	has_colors(false),
@@ -46,49 +50,51 @@ void Stream::setVertexQuantization(double q) {
 	vertex_quantization = q;
 }
 
-MeshLoader *Stream::getLoader(QString file, QString material) {
-MeshLoader *loader = nullptr;
-	if(file.endsWith(".ply"))
+MeshLoader *Stream::getLoader(std::string file, std::string material) {
+	MeshLoader *loader = nullptr;
+
+	auto endsWith = [](const std::string &s, const std::string &suffix) {
+		if(suffix.size() > s.size()) return false;
+		return std::equal(suffix.rbegin(), suffix.rend(), s.rbegin(),
+			[](char a, char b){ return tolower(a) == tolower(b); });
+	};
+
+	if(endsWith(file, ".ply"))
 		loader = new PlyLoader(file);
 
-	else if(file.endsWith(".tsp"))
+	else if(endsWith(file, ".tsp"))
 		loader = new TspLoader(file);
 
-	else if(file.endsWith(".obj"))
+	else if(endsWith(file, ".obj"))
 		loader = new ObjLoader(file, material);
 
-	else if(file.endsWith(".stl"))
+	else if(endsWith(file, ".stl"))
 		loader = new STLLoader(file);
 
-	else if(file.endsWith(".ts")) {
+	else if(endsWith(file, ".ts")) {
 		TsLoader *ts = new TsLoader(file);
 		loader = ts;
-		if(!colormap.isEmpty())
+		if(!colormap.empty())
 			ts->useColormapFor(colormap[0], colormap[1]);
 	}
 
 	else
 		loader = new VcgLoader<VcgMesh>(file);
-	/*        else if(file.endsWith(".off"))
-		loader = new OffLoader(file, vertex_quantization, max_memory);*/
 
-//	else
-//		throw QString("Input format for file " + file + " is not supported at the moment");
 	return loader;
 }
 
-vcg::Box3d Stream::getBox(QStringList paths) {
+vcg::Box3d Stream::getBox(std::vector<std::string> paths) {
 
 	vcg::Box3d box;
 
-	quint32 length = (1<<20); //times 52 bytes. (128Mb of data)
+	uint32_t length = (1<<20);
 	Splat *vertices = new Splat[length];
-	
-	
-	foreach(QString file, paths) {
-		//qDebug() << "Computing box for " << qPrintable(file);
-		MeshLoader *loader = getLoader(file, QString());
-		loader->setMaxMemory(512*(1<<20)); //read only once... does'nt really matter.
+
+
+	for(auto &file : paths) {
+		MeshLoader *loader = getLoader(file, std::string());
+		loader->setMaxMemory(512*(1<<20));
 		while(true) {
 			int count = loader->getVertices(length, vertices);
 			if(count == 0) break;
@@ -101,7 +107,7 @@ vcg::Box3d Stream::getBox(QStringList paths) {
 }
 
 void Stream::load(MeshLoader *loader) {
-	loader->setVertexQuantization(vertex_quantization);
+	loader->setVertexQuantization((float)vertex_quantization);
 	loader->origin = origin;
 	loader->scale = scale;
 	loadMesh(loader);
@@ -116,16 +122,14 @@ void Stream::load(MeshLoader *loader) {
 	}
 }
 
-void Stream::load(QStringList paths, QString material) {
+void Stream::load(std::vector<std::string> paths, std::string material) {
 
 	has_colors = true;
 	has_normals = true;
 	has_textures = true;
-	foreach(QString file, paths) {
-		//qDebug() << "Reading" << qPrintable(file);
+	for(auto &file : paths) {
 		MeshLoader *loader = getLoader(file, material);
 		load(loader);
-		//box.Add(loader->box); //this lineB AFTER the mesh is streamed
 		delete loader;
 	}
 	current_triangle = 0;
@@ -143,8 +147,7 @@ void Stream::clear() {
 	box = vcg::Box3f();
 }
 
-//bit twiddling hacks
-quint64 Stream::getLevel(qint64 v) {
+uint64_t Stream::getLevel(int64_t v) {
 	static const int MultiplyDeBruijnBitPosition[32] =  {
 		0, 1, 28, 2, 29, 14, 24, 3, 30, 22, 20, 15, 25, 17, 4, 8,
 		31, 27, 13, 23, 21, 19, 16, 7, 26, 12, 18, 6, 11, 5, 10, 9
@@ -154,8 +157,8 @@ quint64 Stream::getLevel(qint64 v) {
 
 void Stream::computeOrder() {
 	order.clear();
-	for(int level = levels.size()-1; level >= 0; level--) {
-		std::vector<quint64> &level_blocks = levels[level];
+	for(int level = (int)levels.size()-1; level >= 0; level--) {
+		std::vector<uint64_t> &level_blocks = levels[level];
 		for(uint i = 0; i < level_blocks.size(); i++) {
 			order.push_back(level_blocks[i]);
 		}
@@ -166,15 +169,14 @@ void Stream::computeOrder() {
 
 //SOUP
 
-StreamSoup::StreamSoup(QString prefix):
+StreamSoup::StreamSoup(std::string prefix):
 	VirtualTriangleSoup(prefix) {
 }
 
 void StreamSoup::loadMesh(MeshLoader *loader) {
 	loader->setMaxMemory(maxMemory());
-	loader->texOffset = textures.size();
-	//get 128Mb of data
-	quint32 length = (1<<20); //times 52 bytes.
+	loader->texOffset = (int)textures.size();
+	uint32_t length = (1<<20);
 	Triangle *triangles = new Triangle[length];
 	while(true) {
 		int count = loader->getTriangles(length, triangles);
@@ -189,24 +191,18 @@ void StreamSoup::loadMesh(MeshLoader *loader) {
 
 void StreamSoup::pushTriangle(Triangle &triangle) {
 
-	//ignore degenerate faces
 	vcg::Point3f v[3];
 	for(int k = 0; k < 3; k++) {
 		v[k] = vcg::Point3f(triangle.vertices[k].v);
 		box.Add(v[k]);
 	}
 
-	/* MOVED TO LOADER AND SIMPLIFIER */
-	/*ignore degenerate faces
-	if(v[0] == v[1] || v[1] == v[2] || v[2] == v[0])
-		return; */
-
-	quint64 level = getLevel(current_triangle);
+	uint64_t level = getLevel(current_triangle);
 	assert(levels.size() >= level);
 
-	quint64 block = 0;
-	if(levels.size() == level) {  //need to add a level
-		levels.push_back(std::vector<quint64>());
+	uint64_t block = 0;
+	if(levels.size() == level) {
+		levels.push_back(std::vector<uint64_t>());
 		block = addBlock(level);
 
 	} else {
@@ -227,8 +223,8 @@ Soup StreamSoup::streamTriangles() {
 	if(current_block == order.size())
 		return Soup(NULL, NULL, 0);
 
-	flush(); //save memory
-	quint64 block = order[current_block];
+	flush();
+	uint64_t block = order[current_block];
 	current_block++;
 
 	return get(block);
@@ -238,8 +234,8 @@ void StreamSoup::clearVirtual() {
 	VirtualTriangleSoup::clear();
 }
 
-quint64 StreamSoup::addBlock(quint64 level) {
-	quint64 block = VirtualTriangleSoup::addBlock();
+uint64_t StreamSoup::addBlock(uint64_t level) {
+	uint64_t block = VirtualTriangleSoup::addBlock();
 	levels[level].push_back(block);
 	return block;
 }
@@ -248,14 +244,13 @@ quint64 StreamSoup::addBlock(quint64 level) {
 
 //Cloud
 
-StreamCloud::StreamCloud(QString prefix):
+StreamCloud::StreamCloud(std::string prefix):
 	VirtualVertexCloud(prefix) {
 }
 
 void StreamCloud::loadMesh(MeshLoader *loader) {
 	loader->setMaxMemory(maxMemory());
-	//get 128Mb of data
-	quint32 length = (1<<20); //times 52 bytes.
+	uint32_t length = (1<<20);
 	Splat *vertices = new Splat[length];
 	while(true) {
 		int count = loader->getVertices(length, vertices);
@@ -271,16 +266,15 @@ void StreamCloud::loadMesh(MeshLoader *loader) {
 
 void StreamCloud::pushVertex(Splat &vertex) {
 
-	//ignore degenerate faces
 	vcg::Point3f p(vertex.v);
 	box.Add(p);
 
-	quint64 level = getLevel(current_triangle);
+	uint64_t level = getLevel(current_triangle);
 	assert(levels.size() >= level);
 
-	quint64 block = 0;
-	if(levels.size() == level) {  //need to add a level
-		levels.push_back(std::vector<quint64>());
+	uint64_t block = 0;
+	if(levels.size() == level) {
+		levels.push_back(std::vector<uint64_t>());
 		block = addBlock(level);
 
 	} else {
@@ -302,8 +296,8 @@ Cloud StreamCloud::streamVertices() {
 	if(current_block == order.size())
 		return Cloud(NULL, NULL, 0);
 
-	flush(); //save memory
-	quint64 block = order[current_block];
+	flush();
+	uint64_t block = order[current_block];
 	current_block++;
 
 	return get(block);
@@ -313,9 +307,8 @@ void StreamCloud::clearVirtual() {
 	VirtualVertexCloud::clear();
 }
 
-quint64 StreamCloud::addBlock(quint64 level) {
-	quint64 block = VirtualVertexCloud::addBlock();
+uint64_t StreamCloud::addBlock(uint64_t level) {
+	uint64_t block = VirtualVertexCloud::addBlock();
 	levels[level].push_back(block);
 	return block;
 }
-

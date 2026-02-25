@@ -15,34 +15,31 @@ MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
 GNU General Public License (http://www.gnu.org/licenses/gpl.txt)
 for more details.
 */
-#include <assert.h>
-#include "virtualarray.h"
+#include <cassert>
+#include <stdexcept>
 #include <iostream>
+#include <filesystem>
 
-#include <QDir>
+#include "virtualarray.h"
 
 using namespace std;
 
-VirtualMemory::VirtualMemory(QString prefix):
-	QTemporaryFile(QDir::tempPath() +"/" + prefix),
+VirtualMemory::VirtualMemory(const std::string &prefix):
+	tempFile_(std::make_unique<nx::TempMappedFile>(prefix)),
 	used_memory(0),
 	max_memory(1<<28) {
-
-	setAutoRemove(true);
-	if(!open())
-		throw QString("unable to open temporary file: " + QDir::tempPath() +"/" + prefix);
-
+	// TempMappedFile constructor already creates & opens the file
 }
 
 VirtualMemory::~VirtualMemory() {
 	flush();
 }
 
-void VirtualMemory::setMaxMemory(quint64 n) {
+void VirtualMemory::setMaxMemory(uint64_t n) {
 	max_memory = n;
 }
 
-uchar *VirtualMemory::getBlock(quint64 index, bool prevent_unload) {
+unsigned char *VirtualMemory::getBlock(uint64_t index, bool prevent_unload) {
 
 	assert(index < cache.size());
 	if(cache[index] == NULL) { //not mapped.
@@ -50,47 +47,39 @@ uchar *VirtualMemory::getBlock(quint64 index, bool prevent_unload) {
 			makeRoom();
 		mapBlock(index);
 		if(!cache[index])
-			throw QString("virtual memory error mapping block: " + this->errorString());
+			throw std::runtime_error("virtual memory error mapping block: " + tempFile_->errorString());
 
 		mapped.push_front(index);
 	}
 	return cache[index];
 }
 
-void VirtualMemory::dropBlock(quint64 index) {
+void VirtualMemory::dropBlock(uint64_t index) {
 	unmapBlock(index);
 }
 
-void VirtualMemory::resize(quint64 n, quint64 n_blocks) {
-#ifndef WIN32
-	if(n < (quint64)size())
+void VirtualMemory::resize(uint64_t n, uint64_t n_blocks) {
+#ifndef _WIN32
+	if(n < tempFile_->size())
 		flush();
 #else
 	flush();
 #endif
 	cache.resize(n_blocks, NULL);
-	QTemporaryFile::resize(n);
-#ifdef WIN32
-	/*for (qint64 i = 0; i < cache.size(); i++)
-		mapBlock(i);*/
-#endif
+	tempFile_->resize(n);
 }
 
-quint64 VirtualMemory::addBlock(quint64 length) {
-#ifdef WIN32
+uint64_t VirtualMemory::addBlock(uint64_t length) {
+#ifdef _WIN32
 	flush();
 #endif
 	cache.push_back(NULL);
-	QFile::resize(size() + length);
-#ifdef WIN32
-	/*for (qint64 i = 0; i < cache.size(); i++)
-		mapBlock(i);*/
-#endif
+	tempFile_->resize(tempFile_->size() + length);
 	return cache.size()-1;
 }
 
 void VirtualMemory::flush() {
-	for(quint32 i = 0; i < cache.size(); i++) {
+	for(uint32_t i = 0; i < cache.size(); i++) {
 		if(cache[i])
 			unmapBlock(i);
 	}
@@ -101,26 +90,26 @@ void VirtualMemory::flush() {
 void VirtualMemory::makeRoom() {
 	while(used_memory > max_memory) {
 		assert(mapped.size());
-		quint64 block = mapped.back();
+		uint64_t block = mapped.back();
 		if(cache[block])
 			unmapBlock(block);
 		mapped.pop_back();
 	}
 }
 
-uchar *VirtualMemory::mapBlock(quint64 block) {
-	quint64 offset = blockOffset(block);
-	quint64 length = blockSize(block);
-	assert(offset + length <= (quint64)QFile::size());
-	cache[block] = map(offset, length);
+unsigned char *VirtualMemory::mapBlock(uint64_t block) {
+	uint64_t offset = blockOffset(block);
+	uint64_t length = blockSize(block);
+	assert(offset + length <= tempFile_->size());
+	cache[block] = tempFile_->map(offset, length);
 	used_memory += length;
 	return cache[block];
 }
 
-void VirtualMemory::unmapBlock(quint64 block) {
+void VirtualMemory::unmapBlock(uint64_t block) {
 	assert(block < cache.size());
 	assert(cache[block]);
-	unmap(cache[block]);
+	tempFile_->unmap(cache[block]);
 	cache[block] = NULL;
 	used_memory -= blockSize(block);
 }

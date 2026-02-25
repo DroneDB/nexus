@@ -15,7 +15,9 @@ MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
 GNU General Public License (http://www.gnu.org/licenses/gpl.txt)
 for more details.
 */
-#include <QDebug>
+#include <stdexcept>
+
+#include "../common/logger.h"
 
 #include "kdtree.h"
 #include "meshstream.h"
@@ -75,7 +77,7 @@ void KDTree::load(Stream *stream) {
 
 	float precision = boxFloatPrecision(node.box);
 	if(precision < 12) {
-			throw QString("Quantiziation is too severe!\n"
+			throw std::runtime_error("Quantization is too severe!\n"
 			              "The bounding box is far from the origin (with respect to its size),\n"
 			              "The model might be quantized.\n"
 						  "Try to move the model closer to the origin using -T or -G");
@@ -90,7 +92,7 @@ void KDTree::load(Stream *stream) {
 
 	loadElements(stream);
 
-	for(quint32 i = 0; i < cells.size(); i++) {
+	for(uint32_t i = 0; i < cells.size(); i++) {
 		if(cells[i].isLeaf()) {
 			int block = cells[i].block;
 			block_boxes[block] = cells[i].box;
@@ -132,7 +134,7 @@ vcg::Box3f KDTree::computeBox(vcg::Box3f &b) {
 }
 
 
-bool KDTree::isInNode(quint32 node, vcg::Point3f &p) {
+bool KDTree::isInNode(uint32_t node, vcg::Point3f &p) {
 	vcg::Box3f &box = block_boxes[node];
 	return isIn(box, p);
 }
@@ -152,7 +154,7 @@ bool KDTree::isIn(vcg::Point3f *axes, vcg::Box3f &box, vcg::Point3f &p) {
 
 }//check if point is in the box (using axes) semiopen box.
 
-void KDTree::split(qint32 node_number) {
+void KDTree::split(int32_t node_number) {
 	KDCell &node = cells[node_number];
 
 	findMiddle(node);
@@ -268,7 +270,7 @@ void KDTreeSoup::findRealMiddle(KDCell &node) {
 	}
 
 	vcg::Box3f box;
-	for(quint32 i = 0; i < soup.size(); i++) {
+	for(uint32_t i = 0; i < soup.size(); i++) {
 		Triangle &triangle = soup[i];
 		for(int k = 0; k < 3; k++) {
 			vcg::Point3f p(triangle.vertices[k].v);
@@ -292,7 +294,7 @@ void KDTreeSoup::findRealMiddle(KDCell &node) {
 	std::vector<float> tmp;
 	tmp.resize(soup.size());
 	//use first vertex of triangle for estimating splitting
-	for(quint32 i = 0; i < soup.size(); i++) {
+	for(uint32_t i = 0; i < soup.size(); i++) {
 		vcg::Point3f p(soup[i].vertices[0].v);
 		tmp[i] = p*axis;
 	}
@@ -306,11 +308,11 @@ void KDTreeSoup::splitNode(KDCell &node, KDCell &child0, KDCell &child1) {
 	Soup source = get(child0.block, true);
 	Soup dest = get(child1.block, true);
 
-	quint32 n0 = 0;
+	uint32_t n0 = 0;
 	vcg::Point3f axis = axes[node.split];
-	for(quint32 i = 0; i < source.size(); i++) {
+	for(uint32_t i = 0; i < source.size(); i++) {
 		Triangle &t = source[i];
-		quint32 mask = 0;
+		uint32_t mask = 0;
 		for(int k = 0; k < 3; k ++) {
 			vcg::Point3f p(t.vertices[k].v);
 			if(isIn(node.box, p))
@@ -341,8 +343,8 @@ void KDTreeSoup::pushTriangle(Triangle &t) {
 	if(t.vertices[0] == t.vertices[1] || t.vertices[0] == t.vertices[2] || t.vertices[1] == t.vertices[2])
 		return; */
 
-	quint32 mask = 0x7;   //all inside
-	qint32 node_number = 0;
+	uint32_t mask = 0x7;   //all inside
+	int32_t node_number = 0;
 	do {
 		KDCell &node = cells[node_number];
 		if(node.isLeaf()) {
@@ -387,10 +389,10 @@ double KDTreeSoup::weight(Triangle &t) {
 	return area*w*h*texelWeight;
 }
 
-int KDTreeSoup::assign(Triangle &t, quint32 &mask, vcg::Point3f axis, float middle) {
+int KDTreeSoup::assign(Triangle &t, uint32_t &mask, vcg::Point3f axis, float middle) {
 	int count[] = { 0, 1, 1, 2, 1, 2, 2, 3 };
-	quint32 mask0 = 0; //vertices ending up into child0
-	quint32 mask1 = 0; //vertices ending up into child1
+	uint32_t mask0 = 0; //vertices ending up into child0
+	uint32_t mask1 = 0; //vertices ending up into child1
 	assert(mask != 0);
 	for(int i = 0; i < 3; i++) {
 		if(!(mask & (1<<i))) continue;    //vertex was already outside
@@ -438,7 +440,7 @@ void KDTreeCloud::findRealMiddle(KDCell &node) {
 	Cloud cloud = get(node.block);
 
 	vcg::Box3f box;
-	for(quint32 i = 0; i < cloud.size(); i++) {
+	for(uint32_t i = 0; i < cloud.size(); i++) {
 		Vertex &vertex = cloud[i];
 		vcg::Point3f p(vertex.v);
 
@@ -455,7 +457,7 @@ void KDTreeCloud::findRealMiddle(KDCell &node) {
 	std::vector<float> tmp;
 	tmp.resize(cloud.size());
 	//use first vertex of triangle for estimating splitting
-	for(quint32 i = 0; i < cloud.size(); i++) {
+	for(uint32_t i = 0; i < cloud.size(); i++) {
 		vcg::Point3f p(cloud[i].v);
 		tmp[i] = p*axis;
 	}
@@ -472,9 +474,9 @@ void KDTreeCloud::splitNode(KDCell &node, KDCell &child0, KDCell &child1) {
 	Cloud source = get(child0.block, true);
 	Cloud dest = get(child1.block, true);
 
-	quint32 n0 = 0;
+	uint32_t n0 = 0;
 	vcg::Point3f axis = axes[node.split];
-	for(quint32 i = 0; i < source.size(); i++) {
+	for(uint32_t i = 0; i < source.size(); i++) {
 		Splat &v = source[i];
 		vcg::Point3f p(v.v);
 		volatile float r = p*axis;
@@ -492,7 +494,7 @@ void KDTreeCloud::splitNode(KDCell &node, KDCell &child0, KDCell &child1) {
 
 void KDTreeCloud::pushVertex(Splat &v) {
 
-	qint32 node_number = 0;
+	int32_t node_number = 0;
 	do {
 		KDCell &node = cells[node_number];
 		if(node.isLeaf()) {

@@ -29,6 +29,9 @@ typedef unsigned __int64 uint64_t;
 #include <stdint.h>
 #endif
 
+// 'uint' is available on Linux via sys/types.h but not on MSVC
+typedef unsigned int uint;
+
 #include <assert.h>
 
 namespace nx {

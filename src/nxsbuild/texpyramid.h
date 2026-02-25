@@ -1,10 +1,13 @@
 #ifndef TEXPYRAMID_H
 #define TEXPYRAMID_H
 
-#include <QRect>
-#include <QString>
-#include <QImage>
-#include <QTemporaryFile>
+#include <map>
+#include <vector>
+#include <string>
+#include <cstdint>
+
+#include "../common/image.h"
+#include "../common/mmap_file.h"
 #include "meshloader.h"
 
 namespace nx {
@@ -18,13 +21,11 @@ public:
 	int tex, level;
 	int width, height;
 	int tilew, tileh;              //how many tiles to make up side.
-	//std::vector<qint64> offsets; //where each tile starts in the cache.
 
-	void init(int tex, TexAtlas *c, QImage& texture, int _level);
+	void init(int tex, TexAtlas *c, Image& texture, int _level);
 	bool init(int tex, TexAtlas *c, LoadTexture &texture, int _level);
-	QImage read(QRect region);
+	Image read(Rect region);
 	void build(TexLevel &parent);
-	//void build(QImage img);
 };
 
 //manage a pyramid of splitted textured
@@ -33,9 +34,9 @@ public:
 	TexAtlas *collection;
 	std::vector<TexLevel> levels;
 
-	void init(int tex, TexAtlas *c, QImage &texture);
+	void init(int tex, TexAtlas *c, Image &texture);
 	bool init(int tex, TexAtlas *c, LoadTexture &file);
-	QImage read(int level, QRect region);
+	Image read(int level, Rect region);
 	void buildLevel(int level);
 	void buildAllLevels(int n_levels);
 };
@@ -63,10 +64,10 @@ public:
 		}
 	};
 	struct RamData {
-		QImage image;
+		Image image;
 		uint32_t access;
 		RamData() {}
-		RamData(QImage img, uint32_t a): image(img), access(a) {}
+		RamData(Image img, uint32_t a): image(std::move(img)), access(a) {}
 	};
 	struct DiskData {
 		uint64_t offset;
@@ -76,7 +77,7 @@ public:
 
 	const int side = 4096;
 	std::vector<TexPyramid> pyramids;
-	float scale = 0.70710678;
+	float scale = 0.70710678f;
 	int quality = 92;
 	uint64_t cache_max = 2000000000;
 	uint64_t cache_size = 0;
@@ -84,31 +85,31 @@ public:
 
 	TexAtlas() {}
 
-	void addTextures(std::vector<QImage>& textures);
+	void addTextures(std::vector<Image>& textures);
 	//will actually fill width and height information
 	bool addTextures(std::vector<LoadTexture> &filenames);
-	QImage read(int tex, int level, QRect region);
+	Image read(int tex, int level, Rect region);
 	void buildLevel(int level);
 
-	int width(int tex, int level) { 
+	int width(int tex, int level) {
 		if(tex < 0 || tex >= (int)pyramids.size()) return 1;
 		if(level < 0 || level >= (int)pyramids[tex].levels.size()) return 1;
-		return pyramids[tex].levels[level].width; 
+		return pyramids[tex].levels[level].width;
 	}
-	int height(int tex, int level) { 
+	int height(int tex, int level) {
 		if(tex < 0 || tex >= (int)pyramids.size()) return 1;
 		if(level < 0 || level >= (int)pyramids[tex].levels.size()) return 1;
-		return pyramids[tex].levels[level].height; 
+		return pyramids[tex].levels[level].height;
 	}
 	void flush(int level);
 	void pruneCache();
-	void addImg(Index index, QImage img);
-	QImage getImg(Index index);
+	void addImg(Index index, Image img);
+	Image getImg(Index index);
 
 	std::map<Index, RamData> ram;
 	std::map<Index, DiskData> disk;
 
-	QTemporaryFile storage;
+	TempMappedFile storage;
 };
 
 } //namespace

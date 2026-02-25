@@ -21,7 +21,8 @@ for more details.
 #include <vcg/space/point3.h>
 #include <vcg/space/color4.h>
 #include "trianglesoup.h"
-#include <QString>
+#include <string>
+#include <cstdint>
 
 // stuff to define the TMesh
 #include <vcg/complex/complex.h>
@@ -40,7 +41,7 @@ for more details.
 #include <vcg/complex/algorithms/local_optimization/tri_edge_collapse_quadric_tex.h>
 
 
-#include "../common/nexus.h"
+#include "../common/nexusdata.h"
 #include "../common/cone.h"
 
 //Quadrics simplification structures.
@@ -60,7 +61,7 @@ class TVertex  : public vcg::Vertex<
 		vcg::vertex::Mark,
 		vcg::vertex::BitFlags> {
 public:
-	quint32 node;
+	uint32_t node;
 	TVertex() { q.SetZero(); } //TODO remove this, it's only because of a stupid assert is valid on copy
 	//int position;
 	vcg::math::Quadric<double> &Qd() {return q;}
@@ -100,8 +101,8 @@ class TFace: public vcg::Face<
 		vcg::face::WedgeTexCoord2f,
 		vcg::face::BitFlags> {
 public:
-	quint32 node;
-	quint32 tex; //texture number where the wedge tex coords refer to.
+	uint32_t node;
+	uint32_t tex; //texture number where the wedge tex coords refer to.
 	bool operator<(const TFace &t) const {
 		return node < t.node;
 	}
@@ -114,30 +115,30 @@ public:
 	void load(Soup &soup);
 	void load(Cloud &soup);
 	void lock(std::vector<bool> &locked);
-	void save(Soup &soup, quint32 node);
-	void getTriangles(Triangle *triangles, quint32 node);
-	void getVertices(Splat *vertices, quint32 node);
+	void save(Soup &soup, uint32_t node);
+	void getTriangles(Triangle *triangles, uint32_t node);
+	void getVertices(Splat *vertices, uint32_t node);
 
 	void splitSeams(nx::Signature &sig);
 
-	float simplify(quint32 target_faces, Simplification method);
-	std::vector<TVertex> simplifyCloud(quint16 target_vertices); //return removed vertices
+	float simplify(uint32_t target_faces, Simplification method);
+	std::vector<TVertex> simplifyCloud(uint16_t target_vertices); //return removed vertices
 	float averageDistance();
 
-	void loadPly(const QString& filename);
-	void savePly(QString filename);
-	void savePlyTex(QString filename, QString tex);
-	
+	void loadPly(const std::string &filename);
+	void savePly(const std::string &filename);
+	void savePlyTex(const std::string &filename, const std::string &tex);
+
 	nx::Node getNode();
-	quint32 serializedSize(nx::Signature &sig);
+	uint32_t serializedSize(nx::Signature &sig);
 	//appends nodes found in the TMesh
-	void serialize(uchar *buffer, nx::Signature &sig, std::vector<nx::Patch> &patches);
+	void serialize(unsigned char *buffer, nx::Signature &sig, std::vector<nx::Patch> &patches);
 
 	vcg::Sphere3f boundingSphere();
 	nx::Cone3s normalsCone();
 protected:
-	float randomSimplify(quint16 target_faces);
-	float quadricSimplify(quint32 target_faces);
+	float randomSimplify(uint16_t target_faces);
+	float quadricSimplify(uint32_t target_faces);
 
 	float edgeLengthError();
 };

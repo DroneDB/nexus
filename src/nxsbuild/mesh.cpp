@@ -17,8 +17,7 @@ for more details.
 */
 #include <assert.h>
 
-#include <QTextStream>
-#include <QDebug>
+#include "../common/logger.h"
 
 #include "mesh.h"
 #include <vcg/space/index/kdtree/kdtree.h>
@@ -108,7 +107,7 @@ void Mesh::lockVertices() {
 }
 
 
-void Mesh::save(Soup &soup, quint32 node) {
+void Mesh::save(Soup &soup, uint32_t node) {
 	for(uint i = 0; i < face.size(); i++) {
 		Triangle triangle;
 		AFace &t = face[i];
@@ -128,7 +127,7 @@ void Mesh::save(Soup &soup, quint32 node) {
 	}
 }
 
-void Mesh::getTriangles(Triangle *triangles, quint32 node) {
+void Mesh::getTriangles(Triangle *triangles, uint32_t node) {
 	int count = 0;
 	for(uint i = 0; i < face.size(); i++) {
 		AFace &t= face[i];
@@ -150,7 +149,7 @@ void Mesh::getTriangles(Triangle *triangles, quint32 node) {
 	}
 }
 
-void Mesh::getVertices(Splat *vertices, quint32 node) {
+void Mesh::getVertices(Splat *vertices, uint32_t node) {
 	int count = 0;
 	for(uint i = 0; i < vert.size(); i++) {
 		AVertex &v = vert[i];
@@ -174,13 +173,13 @@ void Mesh::getVertices(Splat *vertices, quint32 node) {
 	}
 }
 
-float Mesh::simplify(quint16 target_faces, Simplification method) {
+float Mesh::simplify(uint16_t target_faces, Simplification method) {
 
 	float error = -1;
 	switch(method) {
 	case RANDOM: error = randomSimplify(target_faces); break;
 	case QUADRICS: error = quadricSimplify(target_faces); break;
-	default: throw QString("unknown simplification method");
+	default: throw std::runtime_error("unknown simplification method");
 	}
 
 	//unlock everything
@@ -192,7 +191,7 @@ float Mesh::simplify(quint16 target_faces, Simplification method) {
 	return error;
 }
 
-std::vector<AVertex> Mesh::simplifyCloud(quint16 target_faces) {
+std::vector<AVertex> Mesh::simplifyCloud(uint16_t target_faces) {
 	vector<AVertex> vertices;
 	vertices.reserve(vert.size() - target_faces);
 	float step = vert.size()/(float)target_faces;
@@ -250,10 +249,10 @@ float Mesh::averageDistance() {
 	return avgDist/count;
 }
 
-void Mesh::savePly(QString filename) {
+void Mesh::savePly(const std::string &filename) {
 	int savemask = vcg::tri::io::Mask::IOM_VERTCOORD | vcg::tri::io::Mask::IOM_VERTNORMAL |
 			vcg::tri::io::Mask::IOM_FACEINDEX;
-	vcg::tri::io::ExporterPLY<Mesh>::Save(*this, filename.toStdString().c_str(), savemask, false);
+	vcg::tri::io::ExporterPLY<Mesh>::Save(*this, filename.c_str(), savemask, false);
 }
 
 nx::Node Mesh::getNode()
@@ -270,18 +269,18 @@ nx::Node Mesh::getNode()
 	return node;
 }
 
-quint32 Mesh::serializedSize(const nx::Signature &sig) {
+uint32_t Mesh::serializedSize(const nx::Signature &sig) {
 	assert(vn == (int)vert.size());
 	assert(fn == (int)face.size());
-	quint16 nvert = vn;
-	quint16 nface = fn;
+	uint16_t nvert = vn;
+	uint16_t nface = fn;
 	return nvert*sig.vertex.size() + nface*sig.face.size();
 }
 
-void Mesh:: serialize(uchar *buffer, nx::Signature &sig, std::vector<nx::Patch> &patches) {
+void Mesh:: serialize(unsigned char *buffer, nx::Signature &sig, std::vector<nx::Patch> &patches) {
 
 
-	quint32 current_node = 0;
+	uint32_t current_node = 0;
 	//find patches and triangle (splat) offsets
 	if(sig.face.hasIndex()) {
 		//sort face by node.
@@ -357,7 +356,7 @@ void Mesh:: serialize(uchar *buffer, nx::Signature &sig, std::vector<nx::Patch> 
 		buffer += vert.size() * sizeof(vcg::Color4b);
 	}
 
-	quint16 *faces = (quint16 *)buffer;
+	uint16_t *faces = (uint16_t *)buffer;
 	for(uint i = 0; i < face.size(); i++) {
 		AFace &f = face[i];
 		for(int k = 0; k < 3; k++) {
@@ -370,7 +369,7 @@ void Mesh:: serialize(uchar *buffer, nx::Signature &sig, std::vector<nx::Patch> 
 
 vcg::Sphere3f Mesh::boundingSphere() {
 	std::vector<vcg::Point3f> vertices(vert.size());
-	for(quint32 i = 0; i < vert.size(); i++)
+	for(uint32_t i = 0; i < vert.size(); i++)
 		vertices[i] = vert[i].P();
 	vcg::Sphere3f sphere;
 	sphere.CreateTight(vertices);
@@ -393,7 +392,7 @@ nx::Cone3s Mesh::normalsCone() {
 		float l2 = (v2 - v0).Norm();
 		float bigger = l1>l2?l1:l2;
 		//skip very thin faces.
-		if(qFuzzyCompare(bigger, bigger + len))
+		if(len < bigger * 1e-5f)
 			continue;
 		norm /= len;
 		normals.push_back(norm);
@@ -409,7 +408,7 @@ nx::Cone3s Mesh::normalsCone() {
 	return cone;
 }
 
-float Mesh::randomSimplify(quint16 /*target_faces*/) {
+float Mesh::randomSimplify(uint16_t /*target_faces*/) {
 	assert(0);
 	return -1;
 }
@@ -424,7 +423,7 @@ void Mesh::quadricInit() {
 	deciSession->Init<TriEdgeCollapse>();
 }
 
-float Mesh::quadricSimplify(quint16 target) {
+float Mesh::quadricSimplify(uint16_t target) {
 
 	deciSession->SetTargetSimplices(target);
 	deciSession->DoOptimization();

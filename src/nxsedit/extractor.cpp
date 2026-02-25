@@ -15,41 +15,62 @@ MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
 GNU General Public License (http://www.gnu.org/licenses/gpl.txt)
 for more details.
 */
-#include <QTextStream>
-#include <QFile>
-#include <QFileInfo>
-#include <QDir>
+#include <fstream>
+#include <filesystem>
+#include <sstream>
+#include <stdexcept>
+#include <cstring>
+#include <iostream>
+#include <cassert>
+
 #include "extractor.h"
 
 #include "../nxszip/meshcoder.h"
-//typedef MeshCoder MeshEncoder;
 #include <corto/corto.h>
 
 #include <vcg/space/triangle3.h>
+
+namespace fs = std::filesystem;
 using namespace std;
 using namespace nx;
 
 namespace {
-QString deepzoomFolderFromOutput(const QString &output) {
-	QFileInfo info(output);
-	QString dirPath = info.absolutePath();
-	if(dirPath.isEmpty())
+
+std::string deepzoomFolderFromOutput(const std::string &output) {
+	fs::path p(output);
+	std::string dirPath = p.parent_path().string();
+	if(dirPath.empty())
 		dirPath = ".";
-	return dirPath + "/" + info.completeBaseName() + "_files";
+	return dirPath + "/" + p.stem().string() + "_files";
 }
 
-QString deepzoomFilePath(const QString &folder, uint32_t index, const QString &ext) {
-	return QString("%1/%2.%3").arg(folder).arg(index).arg(ext);
+std::string deepzoomFilePath(const std::string &folder, uint32_t index, const std::string &ext) {
+	return folder + "/" + std::to_string(index) + "." + ext;
 }
 
-void ensureDeepzoomFolder(const QString &folder) {
-	QDir dir;
-	if(dir.exists(folder))
+void ensureDeepzoomFolder(const std::string &folder) {
+	if(fs::exists(folder))
 		return;
-	if(!dir.mkpath(folder))
-		throw QString("could not create deepzoom folder %1").arg(folder);
+	if(!fs::create_directories(folder))
+		throw std::runtime_error("could not create deepzoom folder " + folder);
 }
+
+// Helper: write raw data to an ofstream
+inline void writeRaw(std::ofstream &f, const char *data, size_t size) {
+	f.write(data, static_cast<std::streamsize>(size));
 }
+
+// Helper: get current write position
+inline uint64_t filePos(std::ofstream &f) {
+	return static_cast<uint64_t>(f.tellp());
+}
+
+// Helper: seek to position
+inline void fileSeek(std::ofstream &f, uint64_t pos) {
+	f.seekp(static_cast<std::streamoff>(pos));
+}
+
+} // anonymous namespace
 
 Extractor::Extractor(NexusData *nx):
 	transform(false),
@@ -82,7 +103,7 @@ void Extractor::setMatrix(vcg::Matrix44f m) {
 	matrix = m;
 }
 
-void Extractor::selectBySize(quint64 size) {
+void Extractor::selectBySize(uint64_t size) {
 	max_size = size;
 	traverse(nexus);
 }
@@ -92,7 +113,7 @@ void Extractor::selectByError(float error) {
 	traverse(nexus);
 }
 
-void Extractor::selectByTriangles(quint64 triangles) {
+void Extractor::selectByTriangles(uint64_t triangles) {
 	max_triangles = triangles;
 	traverse(nexus);
 }
@@ -100,15 +121,15 @@ void Extractor::selectByTriangles(quint64 triangles) {
 void Extractor::selectByLevel(int level) {
 	nlevels = levelCount();
 	if(level >= nlevels)
-		throw QString("Extracted level must be < than the number of levels: %1").arg(nlevels);
+		throw std::runtime_error("Extracted level must be < than the number of levels: " + std::to_string(nlevels));
 	max_level = level;
 	traverse(nexus);
 } //select up to level included (zero based)
 
 void Extractor::dropLevel() {
 	selected.resize(nexus->header.n_nodes, true);
-	quint32 n_nodes = nexus->header.n_nodes;
-	quint32 sink = n_nodes-1;
+	uint32_t n_nodes = nexus->header.n_nodes;
+	uint32_t sink = n_nodes-1;
 	//unselect nodes which output is the sink (definition of last level :)
 	for(uint i = 0; i < n_nodes-1; i++) {
 		nx::Node &node = nexus->nodes[i];
@@ -119,14 +140,13 @@ void Extractor::dropLevel() {
 	selected.back() = false; //sink unselection purely for coherence
 }
 
-void Extractor::save(QString output, nx::Signature &signature) {
-	QFile file;
-	file.setFileName(output);
-	if(!file.open(QIODevice::WriteOnly | QFile::Truncate))
-		throw QString("could not open file " + output + " for writing");
+void Extractor::save(const std::string &output, nx::Signature &signature) {
+	std::ofstream file(output, std::ios::binary | std::ios::trunc);
+	if(!file.is_open())
+		throw std::runtime_error("could not open file " + output + " for writing");
 
 	const bool saveAsDeepzoom = signature.isDeepzoom();
-	QString deepzoomFolder;
+	std::string deepzoomFolder;
 	if(saveAsDeepzoom) {
 		deepzoomFolder = deepzoomFolderFromOutput(output);
 		ensureDeepzoomFolder(deepzoomFolder);
@@ -188,7 +208,7 @@ void Extractor::save(QString output, nx::Signature &signature) {
 	header.n_patches = patches.size();
 	header.n_textures = textures.size();
 
-	quint64 size = sizeof(nx::Header)  +
+	uint64_t size = sizeof(nx::Header)  +
 			nodes.size()*sizeof(nx::Node) +
 			patches.size()*sizeof(nx::Patch) +
 			textures.size()*sizeof(nx::Texture);
@@ -200,20 +220,20 @@ void Extractor::save(QString output, nx::Signature &signature) {
 
 	//TODO should actually remove textures not used anymore.
 
-	file.write((char *)&header, sizeof(header));
+	writeRaw(file, (char *)&header, sizeof(header));
 	if(!nodes.empty())
-		file.write((char *)&*nodes.begin(), sizeof(nx::Node)*nodes.size());
+		writeRaw(file, (char *)&*nodes.begin(), sizeof(nx::Node)*nodes.size());
 	if(!patches.empty())
-		file.write((char *)&*patches.begin(), sizeof(nx::Patch)*patches.size());
+		writeRaw(file, (char *)&*patches.begin(), sizeof(nx::Patch)*patches.size());
 	if(!textures.empty())
-		file.write((char *)&*textures.begin(), sizeof(nx::Texture)*textures.size());
-	file.seek(size);
+		writeRaw(file, (char *)&*textures.begin(), sizeof(nx::Texture)*textures.size());
+	fileSeek(file, size);
 
 	for(uint i = 0; i < node_remap.size()-1; i++) {
 		int n = node_remap[i];
 		if(n == -1) continue;
 		nx::Node &node = nodes[n];
-		node.offset = file.pos()/NEXUS_PADDING;
+		node.offset = filePos(file)/NEXUS_PADDING;
 
 		nexus->loadRam(i);
 
@@ -231,9 +251,10 @@ void Extractor::save(QString output, nx::Signature &signature) {
 		}
 		if(signature.isCompressed()) {
 			if(saveAsDeepzoom) {
-				QFile nodeFile(deepzoomFilePath(deepzoomFolder, n, QStringLiteral("nxn")));
-				if(!nodeFile.open(QIODevice::WriteOnly | QIODevice::Truncate))
-					throw QString("could not open node file %1 for writing").arg(nodeFile.fileName());
+				std::string nodeFilePath = deepzoomFilePath(deepzoomFolder, n, "nxn");
+				std::ofstream nodeFile(nodeFilePath, std::ios::binary | std::ios::trunc);
+				if(!nodeFile.is_open())
+					throw std::runtime_error("could not open node file " + nodeFilePath + " for writing");
 				compress(nodeFile, signature, node, nexus->nodedata[i], &*patches.begin());
 				nodeFile.close();
 			} else {
@@ -241,13 +262,14 @@ void Extractor::save(QString output, nx::Signature &signature) {
 			}
 		} else {
 			if(saveAsDeepzoom) {
-				QFile nodeFile(deepzoomFilePath(deepzoomFolder, n, QStringLiteral("nxn")));
-				if(!nodeFile.open(QIODevice::WriteOnly | QIODevice::Truncate))
-					throw QString("could not open node file %1 for writing").arg(nodeFile.fileName());
-				nodeFile.write(memory, data_size);
+				std::string nodeFilePath = deepzoomFilePath(deepzoomFolder, n, "nxn");
+				std::ofstream nodeFile(nodeFilePath, std::ios::binary | std::ios::trunc);
+				if(!nodeFile.is_open())
+					throw std::runtime_error("could not open node file " + nodeFilePath + " for writing");
+				writeRaw(nodeFile, memory, data_size);
 				nodeFile.close();
 			} else {
-				file.write(memory, data_size);
+				writeRaw(file, memory, data_size);
 			}
 		}
 		if(transform)
@@ -255,7 +277,7 @@ void Extractor::save(QString output, nx::Signature &signature) {
 
 		nexus->dropRam(i);
 	}
-	nodes.back().offset = file.pos()/NEXUS_PADDING;
+	nodes.back().offset = filePos(file)/NEXUS_PADDING;
 
 	//save textures
 	if(textures.size()) {
@@ -263,24 +285,27 @@ void Extractor::save(QString output, nx::Signature &signature) {
 			Texture &in = nexus->textures[i];
 			Texture &out = textures[i] = in;
 
-			quint64 start = in.getBeginOffset();
-			quint64 size = in.getSize();
+			uint64_t start = in.getBeginOffset();
+			uint64_t tsize = in.getSize();
 			char *memory = 0;
 			if(nexus->header.signature.isDeepzoom()) {
 				memory = nexus->file->loadDZTex(i);
 			} else {
-				memory = (char *)nexus->file->map(start, size);
+				memory = (char *)nexus->file->map(start, tsize);
 			}
+			if(!memory)
+				throw std::runtime_error("Failed mapping texture data for texture " + std::to_string(i));
 
-			out.offset = file.pos()/NEXUS_PADDING;
+			out.offset = filePos(file)/NEXUS_PADDING;
 			if(saveAsDeepzoom) {
-				QFile texFile(deepzoomFilePath(deepzoomFolder, i, QStringLiteral("jpg")));
-				if(!texFile.open(QIODevice::WriteOnly | QIODevice::Truncate))
-					throw QString("could not open texture file %1 for writing").arg(texFile.fileName());
-				texFile.write(memory, size);
+				std::string texFilePath = deepzoomFilePath(deepzoomFolder, i, "jpg");
+				std::ofstream texFile(texFilePath, std::ios::binary | std::ios::trunc);
+				if(!texFile.is_open())
+					throw std::runtime_error("could not open texture file " + texFilePath + " for writing");
+				writeRaw(texFile, memory, tsize);
 				texFile.close();
 			} else {
-				file.write(memory, size);
+				writeRaw(file, memory, tsize);
 			}
 
 			if(nexus->header.signature.isDeepzoom()) {
@@ -289,16 +314,16 @@ void Extractor::save(QString output, nx::Signature &signature) {
 				nexus->file->unmap(memory);
 			}
 		}
-		textures.back().offset = file.pos()/NEXUS_PADDING;
+		textures.back().offset = filePos(file)/NEXUS_PADDING;
 	}
 
-	file.seek(sizeof(nx::Header));
+	fileSeek(file, sizeof(nx::Header));
 	if(!nodes.empty())
-		file.write((char *)&*nodes.begin(), sizeof(nx::Node)*nodes.size());
+		writeRaw(file, (char *)&*nodes.begin(), sizeof(nx::Node)*nodes.size());
 	if(!patches.empty())
-		file.write((char *)&*patches.begin(), sizeof(nx::Patch)*patches.size());
+		writeRaw(file, (char *)&*patches.begin(), sizeof(nx::Patch)*patches.size());
 	if(!textures.empty())
-		file.write((char *)&*textures.begin(), sizeof(nx::Texture)*textures.size());
+		writeRaw(file, (char *)&*textures.begin(), sizeof(nx::Texture)*textures.size());
 	file.close();
 }
 
@@ -327,13 +352,13 @@ float Extractor::nodeError(uint32_t node, bool &visible) {
 }
 
 
-quint32 Extractor::pad(quint32 s) {
-	const quint32 padding = NEXUS_PADDING;
-	quint64 m = (s-1) & ~(padding -1);
+uint32_t Extractor::pad(uint32_t s) {
+	const uint32_t padding = NEXUS_PADDING;
+	uint64_t m = (s-1) & ~(padding -1);
 	return m + padding;
 }
 
-void Extractor::compress(QFile &file, nx::Signature &signature, nx::Node &node, nx::NodeData &data, Patch *patches) {
+void Extractor::compress(std::ofstream &file, nx::Signature &signature, nx::Node &node, nx::NodeData &data, Patch *patches) {
 
 	//detect first node error which is out of boundary.
 	if(signature.flags & Signature::MECO) {
@@ -352,17 +377,12 @@ void Extractor::compress(QFile &file, nx::Signature &signature, nx::Node &node, 
 
 		coder.encode();
 
-		//cout << "V size: " << coder.coord_size << endl;
-		//cout << "N size: " << coder.normal_size << endl;
-		//cout << "C size: " << coder.color_size << endl;
-		//cout << "I size: " << coder.face_size << endl;
-
 		if(coder.stream.size() > 0)
-			file.write((char *)&*coder.stream.buffer, coder.stream.size());
+			writeRaw(file, (char *)&*coder.stream.buffer, coder.stream.size());
 		//padding
-		quint64 size = pad(file.pos()) - file.pos();
+		uint64_t psize = pad(filePos(file)) - filePos(file);
 		char tmp[NEXUS_PADDING];
-		file.write(tmp, size);
+		writeRaw(file, tmp, psize);
 	} else if(signature.flags & Signature::CORTO) {
 
 		crt::Encoder encoder(node.nvert, node.nface);
@@ -387,50 +407,15 @@ void Extractor::compress(QFile &file, nx::Signature &signature, nx::Node &node, 
 			encoder.addUvs((float *)data.texCoords(signature, node.nvert), tex_step/512);
 		encoder.encode();
 
-		/*
-		int nvert = encoder.nvert;
-		int nface = encoder.nface;
-		//cout << "Nvert: " << nvert << " Nface: " << nface << " (was: nv: " << node.nvert << " nf: " << node.nface << endl;
-		//cout << "Compressed to: " << encoder.stream.size() << endl;
-		//cout << "Ratio: " << 100.0f*encoder.stream.size()/(nvert*12 + nface*12) << "%" << endl;
-		//cout << "Bpv: " << 8.0f*encoder.stream.size()/nvert << endl << endl;
-
-		//cout << "Header: " << encoder.header_size << " bpv: " << (float)encoder.header_size/nvert << endl;
-
-		crt::VertexAttribute *coord = encoder.data["position"];
-		//cout << "Coord bpv; " << 8.0f*coord->size/nvert << " size: " << coord->size << endl;
-		//cout << "Coord q: " << coord->q << " bits: " << coord->bits << endl << endl;
-
-		crt::VertexAttribute *norm = encoder.data["normal"];
-		if(norm) {
-			//cout << "Normal bpv; " << 8.0f*norm->size/nvert << " size: " << norm->size << endl;
-			//cout << "Normal q: " << norm->q << " bits: " << norm->bits << endl << endl;
-		}
-
-		crt::ColorAttr *color = dynamic_cast<crt::ColorAttr *>(encoder.data["color"]);
-		if(color) {
-			//cout << "Color bpv; " << 8.0f*color->size/nvert << " size: " << color->size << endl;
-			//cout << "Color q: " << color->qc[0] << " " << color->qc[1] << " " << color->qc[2] << " " << color->qc[3] << endl;
-		}
-
-		crt::GenericAttr<int> *uv = dynamic_cast<crt::GenericAttr<int> *>(encoder.data["uv"]);
-		if(uv) {
-			//cout << "Uv bpv; " << 8.0f*uv->size/nvert << endl;
-			//cout << "Uv q: " << uv->q << " bits: " << uv->bits << endl << endl;
-		}
-
-		//cout << "Face bpv; " << 8.0f*encoder.index.size/nvert << " size: " << encoder.index.size << endl; */
-
-
 		if(encoder.stream.size() > 0)
-			file.write((char *)&*encoder.stream.data(), encoder.stream.size());
-		quint64 size = pad(file.pos()) - file.pos();
+			writeRaw(file, (char *)&*encoder.stream.data(), encoder.stream.size());
+		uint64_t psize = pad(filePos(file)) - filePos(file);
 		char tmp[NEXUS_PADDING];
-		file.write(tmp, size);
+		writeRaw(file, tmp, psize);
 	}
 }
 
-void Extractor::countElements(quint64 &n_vertices, quint64 &n_faces) {
+void Extractor::countElements(uint64_t &n_vertices, uint64_t &n_faces) {
 	uint32_t n_nodes = nexus->header.n_nodes;
 	Node *nodes = nexus->nodes;
 	Patch *patches = nexus->patches;
@@ -442,10 +427,10 @@ void Extractor::countElements(quint64 &n_vertices, quint64 &n_faces) {
 	//extracted patches
 	n_vertices = 0;
 	n_faces = 0;
-	std::vector<quint64> offsets(n_nodes, 0);
+	std::vector<uint64_t> offsets(n_nodes, 0);
 
 
-	for(quint32 i = 0; i < n_nodes-1; i++) {
+	for(uint32_t i = 0; i < n_nodes-1; i++) {
 		if(skipNode(i)) continue;
 
 		Node &node = nodes[i];
@@ -461,7 +446,7 @@ void Extractor::countElements(quint64 &n_vertices, quint64 &n_faces) {
 		}
 	}
 }
-void Extractor::savePly(QString filename) {
+void Extractor::savePly(const std::string &filename) {
 
 	uint32_t n_nodes = nexus->header.n_nodes;
 	Node *nodes = nexus->nodes;
@@ -469,23 +454,22 @@ void Extractor::savePly(QString filename) {
 
 	bool has_colors = nexus->header.signature.vertex.hasColors();
 
-	quint64 n_vertices, n_faces;
+	uint64_t n_vertices, n_faces;
 	countElements(n_vertices, n_faces);
 
 	cout << "Vertices: " << n_vertices << endl;
 	cout << "Faces: " << n_faces << endl;
 
-	QFile ply(filename);
-	if(!ply.open(QFile::ReadWrite)) {
-		cerr << "Could not open file: " << qPrintable(filename) << endl;
+	std::ofstream ply(filename, std::ios::binary | std::ios::trunc);
+	if(!ply.is_open()) {
+		cerr << "Could not open file: " << filename << endl;
 		exit(-1);
 	}
 
-	{ //stram flushes on destruction
-		QTextStream stream(&ply);
+	{
+		std::ostringstream stream;
 		stream << "ply\n"
 			   << "format binary_little_endian 1.0\n"
-				  //<< "format ascii 1.0\n"
 			   << "comment generated from nexus\n"
 			   << "element vertex " << n_vertices << "\n"
 			   << "property float x\n"
@@ -499,16 +483,18 @@ void Extractor::savePly(QString filename) {
 		}
 		stream << "element face " << n_faces << "\n"
 			   << "property list uchar int vertex_index\n"
-			   << "end_header\n";        //qtextstrem adds a \n when closed. stupid.
+			   << "end_header\n";
+		std::string hdr = stream.str();
+		ply.write(hdr.data(), hdr.size());
 	}
 
 	//writing vertices
-	quint32 bytes_per_vertex = 12; //3 floats
+	uint32_t bytes_per_vertex = 12; //3 floats
 	if(has_colors) bytes_per_vertex += 4;
 
-	std::vector<quint64> offsets(n_nodes, 0);
+	std::vector<uint64_t> offsets(n_nodes, 0);
 
-	quint64 count_vertices = 0;
+	uint64_t count_vertices = 0;
 	for(uint n = 0; n < n_nodes-1; n++) {
 		offsets[n] = count_vertices;
 		if(skipNode(n)) continue;
@@ -541,7 +527,7 @@ void Extractor::savePly(QString filename) {
 
 
 	//writing faces
-	quint32 bytes_per_face = 1 + 3*sizeof(quint32);
+	uint32_t bytes_per_face = 1 + 3*sizeof(uint32_t);
 
 	char *buffer = new char[bytes_per_face * (1<<16)];
 
@@ -592,9 +578,9 @@ void Extractor::savePly(QString filename) {
 }
 
 
-void Extractor::saveStl(QString filename) {
+void Extractor::saveStl(const std::string &filename) {
 
-	quint64 n_vertices, n_faces;
+	uint64_t n_vertices, n_faces;
 	countElements(n_vertices, n_faces);
 
 	uint32_t n_nodes = nexus->header.n_nodes;
@@ -605,9 +591,9 @@ void Extractor::saveStl(QString filename) {
 	cout << "Faces: " << n_faces << endl;
 
 
-	QFile stl(filename);
-	if(!stl.open(QFile::ReadWrite)) {
-		cerr << "Could not open file: " << qPrintable(filename) << endl;
+	std::ofstream stl(filename, std::ios::binary | std::ios::trunc);
+	if(!stl.is_open()) {
+		cerr << "Could not open file: " << filename << endl;
 		exit(-1);
 	}
 	char header[80] = "STL";
@@ -629,7 +615,7 @@ void Extractor::saveStl(QString filename) {
 		assert(node.nface <= (1<<16));
 
 		memset(buffer, 0, 50*(1<<16));
-		quint64 face_count = 0;
+		uint64_t face_count = 0;
 
 		nexus->loadRam(n);
 		NodeData &data = nexus->nodedata[n];
@@ -687,7 +673,7 @@ struct PlyFace {
 	}
 };
 
-void Extractor::saveUnifiedPly(QString filename) {
+void Extractor::saveUnifiedPly(const std::string &filename) {
 
 	uint32_t n_nodes = nexus->header.n_nodes;
 	Node *nodes = nexus->nodes;
@@ -700,20 +686,20 @@ void Extractor::saveUnifiedPly(QString filename) {
 		selected.resize(n_nodes, true);
 
 	selected.back() = false;
-	QFile ply(filename);
-	if(!ply.open(QFile::ReadWrite)) {
-		cerr << "Could not open file: " << qPrintable(filename) << endl;
+	std::ofstream ply(filename, std::ios::binary | std::ios::trunc);
+	if(!ply.is_open()) {
+		cerr << "Could not open file: " << filename << endl;
 		exit(-1);
 	}
 	//extracted patches
-	quint64 n_vertices = 0;
-	quint64 n_faces = 0;
+	uint64_t n_vertices = 0;
+	uint64_t n_faces = 0;
 
 	vector<PlyColorVertex> color_vertices;
 	vector<PlyVertex> vertices;
 	vector<PlyFace> faces;
 
-	for(quint32 i = 0; i < n_nodes-1; i++) {
+	for(uint32_t i = 0; i < n_nodes-1; i++) {
 		if(skipNode(i)) continue;
 
 		Node &node = nodes[i];
@@ -769,15 +755,10 @@ void Extractor::saveUnifiedPly(QString filename) {
 	n_vertices = vertices.size()? vertices.size() : color_vertices.size();
 	n_faces = faces.size();
 
-
-
-	//cout << "n vertices: " << n_vertices << endl;
-	//cout << "n faces: " << n_faces << endl;
 	{
-		QTextStream stream(&ply);
+		std::ostringstream stream;
 		stream << "ply\n"
 			   << "format binary_little_endian 1.0\n"
-				  //<< "format ascii 1.0\n"
 			   << "comment generated from nexus\n"
 			   << "element vertex " << n_vertices << "\n"
 			   << "property float x\n"
@@ -793,7 +774,9 @@ void Extractor::saveUnifiedPly(QString filename) {
 			stream << "element face " << n_faces << "\n"
 				   << "property list uchar int vertex_indices\n";
 		}
-		stream << "end_header\n";        //qtextstrem adds a \n when closed. stupid.
+		stream << "end_header\n";
+		std::string hdr = stream.str();
+		ply.write(hdr.data(), hdr.size());
 	}
 
 	assert(sizeof(PlyVertex) == 12);

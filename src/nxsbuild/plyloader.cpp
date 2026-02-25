@@ -17,6 +17,8 @@ for more details.
 */
 #include "plyloader.h"
 #include <math.h>
+#include <string>
+#include <stdexcept>
 using namespace vcg;
 using namespace vcg::ply;
 
@@ -26,9 +28,9 @@ using namespace std;
 //Ugly ply stuff from vcg.
 
 struct PlyFace {
-	quint32 f[3];
+	uint32_t f[3];
 	float t[6];
-	quint32 texNumber;
+	uint32_t texNumber;
 	unsigned char n;
 };
 
@@ -106,7 +108,7 @@ PropDescriptor plyprop5[1]=	{
 };
 
 
-PlyLoader::PlyLoader(QString filename):
+PlyLoader::PlyLoader(std::string filename):
 	vertices_element(-1),
 	faces_element(-1),
 	vertices("cache_plyvertex"),
@@ -115,10 +117,10 @@ PlyLoader::PlyLoader(QString filename):
 	current_triangle(0),
 	current_vertex(0) {
 
-	int val = pf.Open(filename.toLocal8Bit().data(), PlyFile::MODE_READ);
+	int val = pf.Open(filename.c_str(), PlyFile::MODE_READ);
 	if(val == -1) {
 		int error = pf.GetError();
-		throw QString("could not open file " + filename + ". Error: %1").arg(error);
+		throw std::runtime_error("could not open file " + filename + ". Error: " + std::to_string(error));
 
 	}
 	init();
@@ -139,9 +141,14 @@ PlyLoader::PlyLoader(QString filename):
 				if(bufstr[i]!='\t' && bufstr[i]>=32 && bufstr[i]<=126 )	bufclean.push_back(bufstr[i]);
 
 			char buf2[255];
-			ply::interpret_texture_name( bufclean.c_str(),filename.toLocal8Bit().data(), buf2);
-			LoadTexture tex;
-			tex.filename = QString(buf2).trimmed();
+		ply::interpret_texture_name( bufclean.c_str(), filename.c_str(), buf2, sizeof(buf2));
+		LoadTexture tex;
+		std::string texname(buf2);
+		// trim whitespace
+		auto b = texname.find_first_not_of(" \t\r\n");
+		if(b != std::string::npos) texname = texname.substr(b, texname.find_last_not_of(" \t\r\n") - b + 1);
+		else texname.clear();
+		tex.filename = texname;
 			texture_filenames.push_back(tex);
 		}
 	}
@@ -183,7 +190,7 @@ void PlyLoader::init() {
 		if(pf.AddToRead(doublecoords[0])==-1 ||
 				pf.AddToRead(doublecoords[1])==-1 ||
 				pf.AddToRead(doublecoords[2])==-1) {
-			throw QString("ply file is missing xyz coords");
+			throw std::runtime_error("ply file is missing xyz coords");
 		} else {
 			double_coords = true;
 		}
@@ -245,7 +252,7 @@ void PlyLoader::cacheVertices() {
 
 	PlyVertex vertex;
 	//caching vertices on temporary file
-	for(quint64 i = 0; i < n_vertices; i++) {
+	for(uint64_t i = 0; i < n_vertices; i++) {
 		Vertex &v = vertices[i];
 		pf.Read((void *)&vertex);
 		if(double_coords) {
@@ -278,32 +285,32 @@ void PlyLoader::cacheVertices() {
 	pf.SetCurElement(faces_element);
 }
 
-void PlyLoader::setMaxMemory(quint64 max_memory) {
+void PlyLoader::setMaxMemory(uint64_t max_memory) {
 	vertices.setMaxMemory(max_memory);
 }
 
-quint32 PlyLoader::getTriangles(quint32 size, Triangle *buffer) {
+uint32_t PlyLoader::getTriangles(uint32_t size, Triangle *buffer) {
 	if(faces_element == -1)
-		throw QString("ply has no faces!");
+		throw std::runtime_error("ply has no faces!");
 
 	if(current_triangle == 0)
 		cacheVertices();
 
 	if(current_triangle >= n_triangles) return 0;
 
-	quint32 count = 0;
+	uint32_t count = 0;
 
 	PlyFace face;
 	face.texNumber = 0;
-	for(quint32 i = 0; i < size && current_triangle < n_triangles; i++) {
+	for(uint32_t i = 0; i < size && current_triangle < n_triangles; i++) {
 
 		pf.Read((void *) &face);
 		Triangle &current = buffer[count];
 
 		for(int k = 0; k < 3; k++) {
 			int v = face.f[k];
-			if(v < 0 || v >= nVertices())
-				throw QString("Bad index in triangle list.");
+			if(v < 0 || v >= (int)nVertices())
+				throw std::runtime_error("Bad index in triangle list.");
 			Vertex &vertex = vertices[face.f[k]];
 			if(!has_vertex_tex_coords) {
 				vertex.t[0] = face.t[k*2];
@@ -336,7 +343,7 @@ quint32 PlyLoader::getTriangles(quint32 size, Triangle *buffer) {
 	return count;
 }
 
-quint32 PlyLoader::getVertices(quint32 size, Splat *splats) {
+uint32_t PlyLoader::getVertices(uint32_t size, Splat *splats) {
 	if(current_triangle > n_triangles) return 0;
 
 	PlyVertex vertex;
@@ -344,8 +351,8 @@ quint32 PlyLoader::getVertices(quint32 size, Splat *splats) {
 	Splat v;
 	v.node = 0;
 	v.c[3] = 255;
-	quint32 count = 0;
-	for(quint32 i = 0; i < size && current_vertex < n_vertices; i++) {
+	uint32_t count = 0;
+	for(uint32_t i = 0; i < size && current_vertex < n_vertices; i++) {
 
 		pf.Read((void *)&vertex);
 

@@ -3,29 +3,34 @@
 
 #include "meshloader.h"
 #include "colormap.h"
+#include "../common/virtualarray.h"
+
+#include <fstream>
+#include <string>
+#include <cstdint>
 
 class TsLoader: public MeshLoader {
 public:
-	TsLoader(QString file);
+	TsLoader(std::string file);
 	~TsLoader();
 
-	bool useColormapFor(const QString &_property, const QString &palette);
-	void setMaxMemory(quint64 max_memory);
-	quint32 getTriangles(quint32 size, Triangle *buffer);
-	quint32 getVertices(quint32 size, Splat *vertex);
+	bool useColormapFor(const std::string &_property, const std::string &palette);
+	void setMaxMemory(uint64_t max_memory);
+	uint32_t getTriangles(uint32_t size, Triangle *buffer);
+	uint32_t getVertices(uint32_t size, Splat *vertex);
 
 private:
 
 	void cacheVertices();
 
-	QFile file;
+	std::ifstream file;
 	VirtualArray<Vertex> vertices;
-	quint64 n_vertices;
-	quint64 n_triangles;
-	quint64 current_triangle;
-	quint64 current_vertex;
-	qint64  current_tri_pos = 0;
-	QString property;
+	uint64_t n_vertices;
+	uint64_t n_triangles;
+	uint64_t current_triangle;
+	uint64_t current_vertex;
+	int64_t  current_tri_pos = 0;
+	std::string property;
 	int property_position = -1;
 	Colormap colormap;
 };

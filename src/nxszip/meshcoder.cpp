@@ -16,8 +16,6 @@ GNU General Public License (http://www.gnu.org/licenses/gpl.txt)
 for more details.
 */
 #include <deque>
-#include <QTime>
-#include <QTextStream>
 #include "meshcoder.h"
 
 using namespace nx;
@@ -717,16 +715,15 @@ void MeshEncoder::encodeFaces(int start, int end) {
 	for(int i: freq)
 		cout << "I: " << 100.0*i/clers.size() << endl;
 
-	//save obj
-	QFile file("test.obj");
-	file.open(QFile::WriteOnly);
-	QTextStream tstream(&file);
-	for(Point3i p: qpoints)
-		tstream << "v " << p[0] << " " << p[1] << " " << p[2] << "\n";
-
-	for(int i = 0; i < test_faces.size(); i += 3) {
-		int *f = &test_faces[i];
-		tstream << "f " << (f[0]+1) << " " << (f[1] +1) << " " << (f[2]+1) << "\n";
+	//save obj (debug)
+	{
+		std::ofstream file("test.obj");
+		for(auto &p: qpoints)
+			file << "v " << p[0] << " " << p[1] << " " << p[2] << "\n";
+		for(size_t i = 0; i < test_faces.size(); i += 3) {
+			int *f = &test_faces[i];
+			file << "f " << (f[0]+1) << " " << (f[1]+1) << " " << (f[2]+1) << "\n";
+		}
 	}
 */
 

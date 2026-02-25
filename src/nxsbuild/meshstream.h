@@ -18,17 +18,13 @@ for more details.
 #ifndef NX_MESHSTREAM_H
 #define NX_MESHSTREAM_H
 
-#include <QStringList>
+#include <vector>
+#include <string>
+#include <cstdint>
 #include <vcg/space/box3.h>
 
 #include "trianglesoup.h"
 #include "meshloader.h"
-
-/* triangles are organized in levels, each one with half the triangle of the lower one
-   we have a buffer for each level, when filled it gets written to disk.
-   I need a vector keeping track of how much full each level is
-   and a  vector of vectors holding which blocks belongs to which level
-   */
 
 class Stream {
 public:
@@ -40,78 +36,75 @@ public:
 	std::vector<LoadTexture> textures;
 	vcg::Point3d origin = vcg::Point3d(0, 0, 0);
 	vcg::Point3d scale = vcg::Point3d(1, 1, 1);
-	QStringList colormap; //used to convert a value into a color, .ts only
+	std::vector<std::string> colormap;
 
 	Stream();
 	virtual ~Stream() {}
 	void setVertexQuantization(double q);
-	vcg::Box3d getBox(QStringList paths);
-	void load(QStringList paths, QString material);
-	void load(MeshLoader *loader); //texture filenames must have the correct (relative or absolute) path!
+	vcg::Box3d getBox(std::vector<std::string> paths);
+	void load(std::vector<std::string> paths, std::string material);
+	void load(MeshLoader *loader);
 
 
-	//return a block of triangles. The buffer is valid until next call to getTriangles. Return null when finished
 	void clear();
-	virtual quint64 size() = 0;
-	virtual void setMaxMemory(quint64 m) = 0;
+	virtual uint64_t size() = 0;
+	virtual void setMaxMemory(uint64_t m) = 0;
 	virtual bool hasColors() { return has_colors; }
 	virtual bool hasNormals() { return has_normals; }
 	virtual bool hasTextures() { return has_textures; }
 
 protected:
-	std::vector<std::vector<quint64> > levels; //for each level the list of blocks
-	std::vector<quint64> order;          //order of the block for streaming
+	std::vector<std::vector<uint64_t> > levels;
+	std::vector<uint64_t> order;
 
-	double vertex_quantization; //a power of 2.
-	quint64 current_triangle;   //used both for loading and streaming
-	quint64 current_block;
+	double vertex_quantization;
+	uint64_t current_triangle;
+	uint64_t current_block;
 
-	MeshLoader *getLoader(QString file, QString material);
-		
+	MeshLoader *getLoader(std::string file, std::string material);
+
 	virtual void flush() = 0;
 	virtual void loadMesh(MeshLoader *loader) = 0;
-	virtual void clearVirtual() = 0; //clear the virtualtrianglesoup or virtualtrianglebin
-	virtual quint64 addBlock(quint64 level) = 0; //return index of block added
+	virtual void clearVirtual() = 0;
+	virtual uint64_t addBlock(uint64_t level) = 0;
 
-	quint64 getLevel(qint64 index);
+	uint64_t getLevel(int64_t index);
 	void computeOrder();
 };
 
 
 class StreamSoup: public Stream, public VirtualTriangleSoup {
 public:
-	StreamSoup(QString prefix);
+	StreamSoup(std::string prefix);
 
 	void pushTriangle(Triangle &triangle);
-	//return a block of triangles. The buffer is valid until next call to getTriangles. Return null when finished
 	Soup streamTriangles();
-	quint64 size() { return VirtualTriangleSoup::size(); }
-	void setMaxMemory(quint64 m) { return VirtualTriangleSoup::setMaxMemory(m); }
+	uint64_t size() { return VirtualTriangleSoup::size(); }
+	void setMaxMemory(uint64_t m) { return VirtualTriangleSoup::setMaxMemory(m); }
 
-protected:    
+protected:
 	void flush() { VirtualTriangleSoup::flush(); }
 	void loadMesh(MeshLoader *loader);
 	void clearVirtual();
-	quint64 addBlock(quint64 level); //return index of block added
+	uint64_t addBlock(uint64_t level);
 
 };
 
 
 class StreamCloud: public Stream, public VirtualVertexCloud {
 public:
-	StreamCloud(QString prefix);
+	StreamCloud(std::string prefix);
 
 	void pushVertex(Splat &ertex);
-	//return a block of triangles. The buffer is valid until next call to getTriangles. Return null when finished
 	Cloud streamVertices();
-	quint64 size() { return VirtualVertexCloud::size(); }
-	void setMaxMemory(quint64 m) { return VirtualVertexCloud::setMaxMemory(m); }
+	uint64_t size() { return VirtualVertexCloud::size(); }
+	void setMaxMemory(uint64_t m) { return VirtualVertexCloud::setMaxMemory(m); }
 
 protected:
 	void flush() { VirtualVertexCloud::flush(); }
 	void loadMesh(MeshLoader *loader);
 	void clearVirtual();
-	quint64 addBlock(quint64 level); //return index of block added
+	uint64_t addBlock(uint64_t level);
 
 };
 

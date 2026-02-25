@@ -21,40 +21,41 @@ for more details.
 #include "meshloader.h"
 #include "../common/virtualarray.h"
 
-#include <QFile>
-#include <QMap>
+#include <fstream>
+#include <map>
 #include <vector>
+#include <string>
+#include <cstdint>
 
 
 class ObjLoader: public MeshLoader {
 public:
-	ObjLoader(QString file, QString mtl);
+	ObjLoader(std::string file, std::string mtl);
 	~ObjLoader();
 
-	void setMaxMemory(quint64 max_memory);
-	quint32 getTriangles(quint32 size, Triangle *buffer);
-	quint32 getVertices(quint32 size, Splat *vertex);
+	void setMaxMemory(uint64_t max_memory);
+	uint32_t getTriangles(uint32_t size, Triangle *buffer);
+	uint32_t getVertices(uint32_t size, Splat *vertex);
 
 private:
-	
-	void readMTL(QFile &file); //obj file passed to search for mtllib
+
+	void readMTL();
 	void cacheTextureUV();
 	void cacheVertices();
-	
-	QFile file;
-	QString mtl;
+
+	std::ifstream file;
+	std::string filepath;
+	std::string mtl;
 	VirtualArray<Vertex> vertices;
 	std::vector<float> vtxtuv;
-	quint64 n_vertices;
-	quint64 n_triangles;
-	quint64 current_triangle;
-	quint64 current_vertex;
-	qint64  current_tri_pos = 0;
-	quint32  current_color = 0;
-	qint32  current_texture_id = -1;
-	QMap<QString, quint32> colors_map;
-	QMap<QString, QString> textures_map;
-	
-	
+	uint64_t n_vertices;
+	uint64_t n_triangles;
+	uint64_t current_triangle;
+	uint64_t current_vertex;
+	int64_t  current_tri_pos = 0;
+	uint32_t current_color = 0;
+	int32_t  current_texture_id = -1;
+	std::map<std::string, uint32_t> colors_map;
+	std::map<std::string, std::string> textures_map;
 };
 #endif // NX_OBJLOADER_H
