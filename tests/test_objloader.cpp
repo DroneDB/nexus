@@ -3,12 +3,6 @@
  *
  * These tests use TestArea (single file download) and TestFS (zip archive)
  * to fetch test assets from remote URLs.
- *
- * ============================================================================
- * TODO (team): Replace the placeholder URLs below with real URLs pointing to
- *              actual .obj / .mtl / .zip test assets, then remove the
- *              DISABLED_ prefix from the test names to activate them.
- * ============================================================================
  */
 #include <gtest/gtest.h>
 #include <filesystem>
@@ -22,17 +16,17 @@
 namespace fs = std::filesystem;
 
 // ---------------------------------------------------------------------------
-// Placeholder URLs — replace with real URLs when test assets are available
+// Test asset URLs
 // ---------------------------------------------------------------------------
 
 // Single .obj file (no materials)
-static const std::string OBJ_URL       = "https://example.com/TODO_INSERT_URL/test_model.obj";
+static const std::string OBJ_URL         = "https://github.com/DroneDB/test_data/raw/refs/heads/master/3d/brighton_beach.obj";
 // Companion .mtl file
-static const std::string MTL_URL       = "https://example.com/TODO_INSERT_URL/test_model.mtl";
+static const std::string MTL_URL         = "https://github.com/DroneDB/test_data/raw/refs/heads/master/3d/brighton_beach.obj.mtl";
 // Zip archive containing .obj + .mtl + textures
 static const std::string OBJ_ARCHIVE_URL = "https://github.com/DroneDB/test_data/raw/refs/heads/master/brighton/odm_texturing.zip";
 
-// Expected values (update after providing real assets)
+// Expected values
 static const uint64_t EXPECTED_OBJ_MIN_TRIANGLES = 1;
 static const uint64_t EXPECTED_OBJ_MIN_VERTICES  = 3;
 
@@ -56,8 +50,7 @@ protected:
 // TestArea-based tests (single file downloads)
 // ---------------------------------------------------------------------------
 
-TEST_F(ObjLoaderTestArea, DISABLED_ConstructFromDownloadedObj) {
-	// Download test .obj
+TEST_F(ObjLoaderTestArea, ConstructFromDownloadedObj) {
 	fs::path objPath = area->downloadTestAsset(OBJ_URL, "test_model.obj");
 	ASSERT_TRUE(fs::exists(objPath));
 	ASSERT_GT(fs::file_size(objPath), 0u);
@@ -68,7 +61,7 @@ TEST_F(ObjLoaderTestArea, DISABLED_ConstructFromDownloadedObj) {
 	});
 }
 
-TEST_F(ObjLoaderTestArea, DISABLED_ConstructWithMtl) {
+TEST_F(ObjLoaderTestArea, ConstructWithMtl) {
 	fs::path objPath = area->downloadTestAsset(OBJ_URL, "test_model.obj");
 	fs::path mtlPath = area->downloadTestAsset(MTL_URL, "test_model.mtl");
 	ASSERT_TRUE(fs::exists(objPath));
@@ -79,7 +72,7 @@ TEST_F(ObjLoaderTestArea, DISABLED_ConstructWithMtl) {
 	});
 }
 
-TEST_F(ObjLoaderTestArea, DISABLED_GetTriangles) {
+TEST_F(ObjLoaderTestArea, GetTriangles) {
 	fs::path objPath = area->downloadTestAsset(OBJ_URL, "test_model.obj");
 	ObjLoader loader(objPath.string(), "");
 
@@ -97,7 +90,7 @@ TEST_F(ObjLoaderTestArea, DISABLED_GetTriangles) {
 		<< "Expected at least " << EXPECTED_OBJ_MIN_TRIANGLES << " triangles";
 }
 
-TEST_F(ObjLoaderTestArea, DISABLED_GetVertices) {
+TEST_F(ObjLoaderTestArea, GetVertices) {
 	fs::path objPath = area->downloadTestAsset(OBJ_URL, "test_model.obj");
 	ObjLoader loader(objPath.string(), "");
 
@@ -115,7 +108,7 @@ TEST_F(ObjLoaderTestArea, DISABLED_GetVertices) {
 		<< "Expected at least " << EXPECTED_OBJ_MIN_VERTICES << " vertices";
 }
 
-TEST_F(ObjLoaderTestArea, DISABLED_BoundingBoxIsValid) {
+TEST_F(ObjLoaderTestArea, BoundingBoxIsValid) {
 	fs::path objPath = area->downloadTestAsset(OBJ_URL, "test_model.obj");
 	ObjLoader loader(objPath.string(), "");
 
@@ -126,12 +119,12 @@ TEST_F(ObjLoaderTestArea, DISABLED_BoundingBoxIsValid) {
 
 	auto &box = loader.box;
 	// After reading triangles the bounding box must be non-degenerate
-	EXPECT_LE(box.min[0], box.max[0]);
-	EXPECT_LE(box.min[1], box.max[1]);
-	EXPECT_LE(box.min[2], box.max[2]);
+	EXPECT_LE(box.min.X(), box.max.X());
+	EXPECT_LE(box.min.Y(), box.max.Y());
+	EXPECT_LE(box.min.Z(), box.max.Z());
 }
 
-TEST_F(ObjLoaderTestArea, DISABLED_TrianglesAreNotDegenerate) {
+TEST_F(ObjLoaderTestArea, TrianglesAreNotDegenerate) {
 	fs::path objPath = area->downloadTestAsset(OBJ_URL, "test_model.obj");
 	ObjLoader loader(objPath.string(), "");
 

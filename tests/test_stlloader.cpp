@@ -4,11 +4,6 @@
  * These tests use TestArea (single file download) and TestFS (zip archive)
  * to fetch test assets from remote URLs.
  *
- * ============================================================================
- * TODO (team): Replace the placeholder URLs below with real URLs pointing to
- *              actual .stl / .zip test assets, then remove the DISABLED_
- *              prefix from the test names to activate them.
- * ============================================================================
  */
 #include <gtest/gtest.h>
 #include <filesystem>
@@ -21,16 +16,11 @@
 
 namespace fs = std::filesystem;
 
-// ---------------------------------------------------------------------------
-// Placeholder URLs — replace with real URLs when test assets are available
-// ---------------------------------------------------------------------------
 
 // ASCII .stl file
-static const std::string STL_ASCII_URL   = "https://example.com/TODO_INSERT_URL/test_model_ascii.stl";
+static const std::string STL_ASCII_URL   = "https://github.com/DroneDB/test_data/raw/refs/heads/master/3d/stl_ascii.stl";
 // Binary .stl file
-static const std::string STL_BINARY_URL  = "https://example.com/TODO_INSERT_URL/test_model_binary.stl";
-// Zip archive containing one or more .stl files
-static const std::string STL_ARCHIVE_URL = "https://example.com/TODO_INSERT_URL/test_stl_archive.zip";
+static const std::string STL_BINARY_URL  = "https://github.com/DroneDB/test_data/raw/refs/heads/master/3d/stl_binary.stl";
 
 // Expected values (update after providing real assets)
 static const uint32_t EXPECTED_STL_MIN_TRIANGLES = 1;
@@ -55,7 +45,7 @@ protected:
 // ASCII STL tests
 // ---------------------------------------------------------------------------
 
-TEST_F(STLLoaderTestArea, DISABLED_ConstructFromAsciiStl) {
+TEST_F(STLLoaderTestArea, ConstructFromAsciiStl) {
 	fs::path stlPath = area->downloadTestAsset(STL_ASCII_URL, "test_ascii.stl");
 	ASSERT_TRUE(fs::exists(stlPath));
 	ASSERT_GT(fs::file_size(stlPath), 0u);
@@ -65,7 +55,7 @@ TEST_F(STLLoaderTestArea, DISABLED_ConstructFromAsciiStl) {
 	});
 }
 
-TEST_F(STLLoaderTestArea, DISABLED_ReadAsciiTriangles) {
+TEST_F(STLLoaderTestArea, ReadAsciiTriangles) {
 	fs::path stlPath = area->downloadTestAsset(STL_ASCII_URL, "test_ascii.stl");
 	STLLoader loader(stlPath.string());
 
@@ -87,7 +77,7 @@ TEST_F(STLLoaderTestArea, DISABLED_ReadAsciiTriangles) {
 // Binary STL tests
 // ---------------------------------------------------------------------------
 
-TEST_F(STLLoaderTestArea, DISABLED_ConstructFromBinaryStl) {
+TEST_F(STLLoaderTestArea, ConstructFromBinaryStl) {
 	fs::path stlPath = area->downloadTestAsset(STL_BINARY_URL, "test_binary.stl");
 	ASSERT_TRUE(fs::exists(stlPath));
 	ASSERT_GT(fs::file_size(stlPath), 0u);
@@ -97,7 +87,7 @@ TEST_F(STLLoaderTestArea, DISABLED_ConstructFromBinaryStl) {
 	});
 }
 
-TEST_F(STLLoaderTestArea, DISABLED_BinaryTriangleCount) {
+TEST_F(STLLoaderTestArea, BinaryTriangleCount) {
 	fs::path stlPath = area->downloadTestAsset(STL_BINARY_URL, "test_binary.stl");
 	STLLoader loader(stlPath.string());
 
@@ -105,7 +95,7 @@ TEST_F(STLLoaderTestArea, DISABLED_BinaryTriangleCount) {
 	EXPECT_GE(loader.nTriangles(), EXPECTED_STL_MIN_TRIANGLES);
 }
 
-TEST_F(STLLoaderTestArea, DISABLED_ReadBinaryTriangles) {
+TEST_F(STLLoaderTestArea, ReadBinaryTriangles) {
 	fs::path stlPath = area->downloadTestAsset(STL_BINARY_URL, "test_binary.stl");
 	STLLoader loader(stlPath.string());
 
@@ -123,7 +113,7 @@ TEST_F(STLLoaderTestArea, DISABLED_ReadBinaryTriangles) {
 		<< "Expected at least " << EXPECTED_STL_MIN_TRIANGLES << " triangles from binary STL";
 }
 
-TEST_F(STLLoaderTestArea, DISABLED_BoundingBoxIsValid) {
+TEST_F(STLLoaderTestArea, BoundingBoxIsValid) {
 	fs::path stlPath = area->downloadTestAsset(STL_BINARY_URL, "test_binary.stl");
 	STLLoader loader(stlPath.string());
 
@@ -132,12 +122,12 @@ TEST_F(STLLoaderTestArea, DISABLED_BoundingBoxIsValid) {
 	while (loader.getTriangles(bufSize, buffer.data()) > 0) {}
 
 	auto &box = loader.box;
-	EXPECT_LE(box.min[0], box.max[0]);
-	EXPECT_LE(box.min[1], box.max[1]);
-	EXPECT_LE(box.min[2], box.max[2]);
+	EXPECT_LE(box.min.X(), box.max.X());
+	EXPECT_LE(box.min.Y(), box.max.Y());
+	EXPECT_LE(box.min.Z(), box.max.Z());
 }
 
-TEST_F(STLLoaderTestArea, DISABLED_StlHasNoColorsNormalsTextures) {
+TEST_F(STLLoaderTestArea, StlHasNoColorsNormalsTextures) {
 	fs::path stlPath = area->downloadTestAsset(STL_BINARY_URL, "test_binary.stl");
 	STLLoader loader(stlPath.string());
 
@@ -147,7 +137,7 @@ TEST_F(STLLoaderTestArea, DISABLED_StlHasNoColorsNormalsTextures) {
 	EXPECT_FALSE(loader.hasTextures());
 }
 
-TEST_F(STLLoaderTestArea, DISABLED_TrianglesAreNotDegenerate) {
+TEST_F(STLLoaderTestArea, TrianglesAreNotDegenerate) {
 	fs::path stlPath = area->downloadTestAsset(STL_BINARY_URL, "test_binary.stl");
 	STLLoader loader(stlPath.string());
 
@@ -163,34 +153,4 @@ TEST_F(STLLoaderTestArea, DISABLED_TrianglesAreNotDegenerate) {
 
 	EXPECT_LT(degenerateCount, read)
 		<< "All triangles are degenerate — loader may be broken";
-}
-
-// ---------------------------------------------------------------------------
-// TestFS-based tests (zip archive)
-// ---------------------------------------------------------------------------
-
-TEST(STLLoaderTestFS, DISABLED_LoadFromZipArchive) {
-	TestFS testFs(STL_ARCHIVE_URL);
-
-	fs::path stlFile;
-	for (auto &entry : fs::recursive_directory_iterator(testFs.testFolder)) {
-		if (entry.path().extension() == ".stl") {
-			stlFile = entry.path();
-			break;
-		}
-	}
-	ASSERT_FALSE(stlFile.empty()) << "No .stl file found in archive";
-
-	STLLoader loader(stlFile.string());
-
-	const uint32_t bufSize = 4096;
-	std::vector<Triangle> buffer(bufSize);
-	uint32_t total = 0;
-	uint32_t read = 0;
-	do {
-		read = loader.getTriangles(bufSize, buffer.data());
-		total += read;
-	} while (read > 0);
-
-	EXPECT_GT(total, 0u) << "Archive .stl should contain at least one triangle";
 }

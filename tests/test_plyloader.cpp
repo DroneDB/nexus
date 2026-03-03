@@ -3,13 +3,8 @@
  *
  * These tests use TestArea (single file download) and TestFS (zip archive)
  * to fetch test assets from remote URLs.
- *
- * ============================================================================
- * TODO (team): Replace the placeholder URLs below with real URLs pointing to
- *              actual .ply / .zip test assets, then remove the DISABLED_
- *              prefix from the test names to activate them.
- * ============================================================================
  */
+
 #include <gtest/gtest.h>
 #include <filesystem>
 #include <string>
@@ -21,14 +16,8 @@
 
 namespace fs = std::filesystem;
 
-// ---------------------------------------------------------------------------
-// Placeholder URLs — replace with real URLs when test assets are available
-// ---------------------------------------------------------------------------
-
 // Single .ply file (binary or ASCII)
-static const std::string PLY_URL         = "https://example.com/TODO_INSERT_URL/test_model.ply";
-// Zip archive containing one or more .ply files
-static const std::string PLY_ARCHIVE_URL = "https://example.com/TODO_INSERT_URL/test_ply_archive.zip";
+static const std::string PLY_URL         = "https://github.com/DroneDB/test_data/raw/refs/heads/master/3d/brighton.ply";
 
 // Expected values (update after providing real assets)
 static const uint32_t EXPECTED_PLY_MIN_VERTICES  = 3;
@@ -54,7 +43,7 @@ protected:
 // TestArea-based tests
 // ---------------------------------------------------------------------------
 
-TEST_F(PlyLoaderTestArea, DISABLED_ConstructFromDownloadedPly) {
+TEST_F(PlyLoaderTestArea, ConstructFromDownloadedPly) {
 	fs::path plyPath = area->downloadTestAsset(PLY_URL, "test_model.ply");
 	ASSERT_TRUE(fs::exists(plyPath));
 	ASSERT_GT(fs::file_size(plyPath), 0u);
@@ -64,7 +53,7 @@ TEST_F(PlyLoaderTestArea, DISABLED_ConstructFromDownloadedPly) {
 	});
 }
 
-TEST_F(PlyLoaderTestArea, DISABLED_VertexAndTriangleCounts) {
+TEST_F(PlyLoaderTestArea, VertexAndTriangleCounts) {
 	fs::path plyPath = area->downloadTestAsset(PLY_URL, "test_model.ply");
 	PlyLoader loader(plyPath.string());
 
@@ -74,7 +63,7 @@ TEST_F(PlyLoaderTestArea, DISABLED_VertexAndTriangleCounts) {
 		<< "Expected at least " << EXPECTED_PLY_MIN_TRIANGLES << " triangles";
 }
 
-TEST_F(PlyLoaderTestArea, DISABLED_GetTriangles) {
+TEST_F(PlyLoaderTestArea, GetTriangles) {
 	fs::path plyPath = area->downloadTestAsset(PLY_URL, "test_model.ply");
 	PlyLoader loader(plyPath.string());
 
@@ -91,7 +80,7 @@ TEST_F(PlyLoaderTestArea, DISABLED_GetTriangles) {
 	EXPECT_GE(totalTris, EXPECTED_PLY_MIN_TRIANGLES);
 }
 
-TEST_F(PlyLoaderTestArea, DISABLED_GetVertices) {
+TEST_F(PlyLoaderTestArea, GetVertices) {
 	fs::path plyPath = area->downloadTestAsset(PLY_URL, "test_model.ply");
 	PlyLoader loader(plyPath.string());
 
@@ -108,7 +97,7 @@ TEST_F(PlyLoaderTestArea, DISABLED_GetVertices) {
 	EXPECT_GE(totalVerts, EXPECTED_PLY_MIN_VERTICES);
 }
 
-TEST_F(PlyLoaderTestArea, DISABLED_BoundingBoxIsValid) {
+TEST_F(PlyLoaderTestArea, BoundingBoxIsValid) {
 	fs::path plyPath = area->downloadTestAsset(PLY_URL, "test_model.ply");
 	PlyLoader loader(plyPath.string());
 
@@ -117,12 +106,12 @@ TEST_F(PlyLoaderTestArea, DISABLED_BoundingBoxIsValid) {
 	while (loader.getTriangles(bufSize, buffer.data()) > 0) {}
 
 	auto &box = loader.box;
-	EXPECT_LE(box.min[0], box.max[0]);
-	EXPECT_LE(box.min[1], box.max[1]);
-	EXPECT_LE(box.min[2], box.max[2]);
+	EXPECT_LE(box.min.X(), box.max.X());
+	EXPECT_LE(box.min.Y(), box.max.Y());
+	EXPECT_LE(box.min.Z(), box.max.Z());
 }
 
-TEST_F(PlyLoaderTestArea, DISABLED_TrianglesAreNotDegenerate) {
+TEST_F(PlyLoaderTestArea, TrianglesAreNotDegenerate) {
 	fs::path plyPath = area->downloadTestAsset(PLY_URL, "test_model.ply");
 	PlyLoader loader(plyPath.string());
 
@@ -140,7 +129,7 @@ TEST_F(PlyLoaderTestArea, DISABLED_TrianglesAreNotDegenerate) {
 		<< "All triangles are degenerate — loader may be broken";
 }
 
-TEST_F(PlyLoaderTestArea, DISABLED_HasColorsOrNormals) {
+TEST_F(PlyLoaderTestArea, HasColorsOrNormals) {
 	fs::path plyPath = area->downloadTestAsset(PLY_URL, "test_model.ply");
 	PlyLoader loader(plyPath.string());
 
@@ -150,36 +139,4 @@ TEST_F(PlyLoaderTestArea, DISABLED_HasColorsOrNormals) {
 	if (!hasExtra) {
 		std::cout << "[  INFO  ] PLY has no colors, normals, or textures\n";
 	}
-}
-
-// ---------------------------------------------------------------------------
-// TestFS-based tests (zip archive)
-// ---------------------------------------------------------------------------
-
-TEST(PlyLoaderTestFS, DISABLED_LoadFromZipArchive) {
-	TestFS testFs(PLY_ARCHIVE_URL);
-
-	fs::path plyFile;
-	for (auto &entry : fs::recursive_directory_iterator(testFs.testFolder)) {
-		if (entry.path().extension() == ".ply") {
-			plyFile = entry.path();
-			break;
-		}
-	}
-	ASSERT_FALSE(plyFile.empty()) << "No .ply file found in archive";
-
-	PlyLoader loader(plyFile.string());
-
-	EXPECT_GT(loader.nVertices(), 0u);
-
-	const uint32_t bufSize = 4096;
-	std::vector<Triangle> buffer(bufSize);
-	uint32_t total = 0;
-	uint32_t read = 0;
-	do {
-		read = loader.getTriangles(bufSize, buffer.data());
-		total += read;
-	} while (read > 0);
-
-	EXPECT_GT(total, 0u) << "Archive .ply should contain at least one triangle";
 }
