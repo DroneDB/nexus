@@ -85,9 +85,11 @@ uint32_t STLLoader::getTrianglesBinary(uint32_t size, Triangle *buffer) {
 	for (int64_t i = 0; i < nread; i++) {
 		float *pos = (float *)(start + 12); // skip normal
 		Triangle &tri = buffer[i];
-		for (int t = 0; t < 3; t++)
+		for (int t = 0; t < 3; t++) {
 			for (int k = 0; k < 3; k++)
 				tri.vertices[t].v[k] = (pos[t * 3 + k] - (float)origin[k]) * (float)scale[k];
+			box.Add(vcg::Point3d(tri.vertices[t].v[0], tri.vertices[t].v[1], tri.vertices[t].v[2]));
+		}
 		tri.node = 0;
 		current_triangle++;
 		start += 50;

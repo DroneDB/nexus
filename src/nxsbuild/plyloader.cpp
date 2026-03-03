@@ -275,6 +275,8 @@ void PlyLoader::cacheVertices() {
 			v.t[1] = vertex.t[1];
 		}
 
+		box.Add(vcg::Point3d(v.v[0], v.v[1], v.v[2]));
+
 		if(quantization) {
 			quantize(v.v[0]);
 			quantize(v.v[1]);
