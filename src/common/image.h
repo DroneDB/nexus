@@ -94,6 +94,9 @@ public:
 	void blit(int destX, int destY, const Image &src);
 
 private:
+	/// Decode WebP data from memory into this image (RGBA).
+	bool loadWebP(const unsigned char *data, size_t size);
+
 	int width_ = 0;
 	int height_ = 0;
 	static constexpr int channels_ = 4; // always RGBA

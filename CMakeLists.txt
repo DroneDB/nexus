@@ -17,6 +17,7 @@ find_package(PNG        REQUIRED)
 find_package(JPEG       REQUIRED)
 find_package(plog       CONFIG REQUIRED)
 find_package(Stb REQUIRED)
+find_package(WebP CONFIG REQUIRED)
 find_path(BSHOSHANY_THREAD_POOL_INCLUDE_DIRS "BS_thread_pool.hpp")
 
 # nexus version

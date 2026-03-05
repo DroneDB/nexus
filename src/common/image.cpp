@@ -29,10 +29,14 @@ for more details.
 #include <jpeglib.h>
 #include <csetjmp>
 
+// WebP decoding support
+#include <webp/decode.h>
+
 #include "image.h"
 
 #include <algorithm>
 #include <cstring>
+#include <fstream>
 #include <stdexcept>
 #include <filesystem>
 
@@ -98,6 +102,20 @@ void Image::fill(uint8_t r, uint8_t g, uint8_t b, uint8_t a) {
 // ---------------------------------------------------------------------------
 
 bool Image::load(const std::string &filename) {
+	// Check if file is WebP by extension
+	std::string ext = std::filesystem::path(filename).extension().string();
+	std::transform(ext.begin(), ext.end(), ext.begin(), ::tolower);
+	if (ext == ".webp" || ext == ".web") {
+		std::ifstream f(filename, std::ios::binary | std::ios::ate);
+		if (!f) return false;
+		size_t size = static_cast<size_t>(f.tellg());
+		f.seekg(0);
+		std::vector<unsigned char> buf(size);
+		f.read(reinterpret_cast<char*>(buf.data()), size);
+		if (!f) return false;
+		return loadWebP(buf.data(), size);
+	}
+
 	int w = 0, h = 0, comp = 0;
 	unsigned char *data = stbi_load(filename.c_str(), &w, &h, &comp, 4); // force RGBA
 	if (!data)
@@ -114,6 +132,12 @@ bool Image::load(const std::string &filename) {
 // ---------------------------------------------------------------------------
 
 bool Image::loadFromData(const unsigned char *buf, size_t size) {
+	// Try WebP first if the buffer starts with RIFF....WEBP signature
+	if (size >= 12 && buf[0] == 'R' && buf[1] == 'I' && buf[2] == 'F' && buf[3] == 'F'
+	    && buf[8] == 'W' && buf[9] == 'E' && buf[10] == 'B' && buf[11] == 'P') {
+		return loadWebP(buf, size);
+	}
+
 	int w = 0, h = 0, comp = 0;
 	unsigned char *data = stbi_load_from_memory(buf, static_cast<int>(size), &w, &h, &comp, 4);
 	if (!data)
@@ -122,6 +146,23 @@ bool Image::loadFromData(const unsigned char *buf, size_t size) {
 	height_ = h;
 	pixels_.assign(data, data + static_cast<size_t>(w) * h * 4);
 	stbi_image_free(data);
+	return true;
+}
+
+// ---------------------------------------------------------------------------
+// WebP decoding helper
+// ---------------------------------------------------------------------------
+
+bool Image::loadWebP(const unsigned char *buf, size_t size) {
+	int w = 0, h = 0;
+	// WebPDecodeRGBA returns a malloc'd buffer with RGBA pixels
+	unsigned char *data = WebPDecodeRGBA(buf, size, &w, &h);
+	if (!data)
+		return false;
+	width_ = w;
+	height_ = h;
+	pixels_.assign(data, data + static_cast<size_t>(w) * h * 4);
+	WebPFree(data);
 	return true;
 }
 

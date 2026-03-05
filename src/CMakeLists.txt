@@ -81,6 +81,7 @@ target_link_libraries(nexus PUBLIC
 	PNG::PNG
 	JPEG::JPEG
 	plog::plog
+	WebP::webp
 )
 
 target_include_directories(nexus PUBLIC
