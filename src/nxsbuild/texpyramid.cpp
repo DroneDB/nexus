@@ -278,6 +278,7 @@ void TexAtlas::pruneCache() {
 			std::vector<unsigned char> jpegBuf;
 			it->second.image.saveToMemory(jpegBuf, quality);
 
+			storage.seek(d.offset);
 			storage.write(reinterpret_cast<const char*>(jpegBuf.data()), jpegBuf.size());
 			d.size = jpegBuf.size();
 			disk[index] = d;

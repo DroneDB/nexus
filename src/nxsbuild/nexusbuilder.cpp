@@ -431,16 +431,20 @@ nx::Image NexusBuilder::extractNodeTex(TMesh &mesh, int level, float &error, flo
 			vcg::Point2i &o = origins[i];
 			vcg::Point2i &s = sizes[i];
 
-			nx::Image rect = atlas.read(source, level, Rect(o[0], o[1], s[0], s[1]));
+			nx::Image rect;
+			{
+				std::lock_guard<std::mutex> locker(m_atlas);
+				rect = atlas.read(source, level, Rect(o[0], o[1], s[0], s[1]));
+			}
 			if(i < (int)mapping.size())
 				image.blit(mapping[i][0], mapping[i][1], rect);
 		}
 	}
 
 	image = image.mirrored();
-	if (image.width() > 1024 || image.height() > 1024){
+	if (image.width() > max_node_tex_size || image.height() > max_node_tex_size){
 		int maxDim = std::max<int>(image.width(), image.height());
-		float ratio = 1024.0f / (float)maxDim;
+		float ratio = (float)max_node_tex_size / (float)maxDim;
 		image = image.scaled((int)(image.width() * ratio), (int)(image.height() * ratio));
 	}
 	return image;
