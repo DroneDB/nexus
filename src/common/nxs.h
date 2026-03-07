@@ -15,7 +15,7 @@ enum NXSErr {
 
 struct NexusBuildOptions {
     // --- Geometry build options ---
-    int   node_faces            = 1 << 14;  // triangles per node = 16384
+    int   node_faces            = 1 << 15;  // triangles per node = 32768
     float texel_weight          = 0.1f;     // relative weight of texels
     int   top_node_faces        = 4096;
     float vertex_quantization   = 0.0f;     // 0.0 = disabled
@@ -24,6 +24,7 @@ struct NexusBuildOptions {
     float scaling               = 0.5f;     // simplification ratio
     int   skip_levels           = 0;        // skip simplify levels
     float adaptive              = 0.333f;   // KDTree adaptive factor
+    int   max_node_tex_size     = 4096;     // max node texture dimension (width/height)
 
     bool  point_cloud           = false;
     bool  force_normals         = false;
@@ -47,13 +48,13 @@ struct NexusBuildOptions {
     // - else if error_q > 0.0: derive coord_step from node error
     float coord_step    = 0.0f;
     int   position_bits = 0;
-    float error_q       = 0.1f;
+    float error_q       = 0.01f;
 
-    int   luma_bits     = 6;
-    int   chroma_bits   = 6;
-    int   alpha_bits    = 5;
-    int   normal_bits   = 10;
-    float tex_step      = 0.25f;   // in pixels
+    int   luma_bits     = 8;
+    int   chroma_bits   = 8;
+    int   alpha_bits    = 7;
+    int   normal_bits   = 14;
+    float tex_step      = 0.125f;  // in pixels
 };
 
 NXSErr nexusBuild(const char *input,

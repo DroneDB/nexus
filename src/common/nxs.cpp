@@ -189,6 +189,7 @@ NXSErr doNexusBuild(const char* input,
         }
 
         builder.tex_quality = opts.texture_quality;
+        builder.max_node_tex_size = opts.max_node_tex_size;
 
         if (!builder.initAtlas(stream->textures)) {
             setErrorMessage(errorMessage, errorMessageSize, "Failed to initialize texture atlas");
