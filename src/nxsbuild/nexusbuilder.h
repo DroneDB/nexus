@@ -106,7 +106,6 @@ public:
 	std::mutex m_builder;   //locks builders data (patches, etc.)
 	std::mutex m_chunks;    //locks builder chunks (the cache)
 	std::mutex m_atlas;     //locks atlas (the cache)
-	std::mutex m_texsimply; //locks the temporary data simplification structure for texture.
 	std::mutex m_textures;  //locks texture temporary file
 
 

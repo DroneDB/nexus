@@ -610,16 +610,12 @@ void NexusBuilder::processBlock(KDTreeSoup *input, StreamSoup *output, uint bloc
 
 		if(!hasTextures()) {
 			mesh1.lockVertices();
-			{
-				std::lock_guard<std::mutex> locker(m_texsimply);
-				mesh1.quadricInit();
-			}
+			mesh1.quadricInit();
 
 			error = mesh1.simplify((uint16_t)(ntriangles*scaling), Mesh::QUADRICS);
 			nface = mesh1.fn;
 
 		} else {
-			std::lock_guard<std::mutex> locker(m_texsimply);
 			int nvert = (int)(ntriangles*scaling);
 
 			if(skipSimplifyLevels > 0)

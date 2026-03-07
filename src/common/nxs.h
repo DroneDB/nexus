@@ -15,7 +15,7 @@ enum NXSErr {
 
 struct NexusBuildOptions {
     // --- Geometry build options ---
-    int   node_faces            = 1 << 15;  // triangles per node = 32768
+    int   node_faces            = 1 << 14;  // triangles per node = 16384
     float texel_weight          = 0.1f;     // relative weight of texels
     int   top_node_faces        = 4096;
     float vertex_quantization   = 0.0f;     // 0.0 = disabled
