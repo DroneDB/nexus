@@ -298,7 +298,7 @@ void Extractor::save(const std::string &output, nx::Signature &signature) {
 
 			out.offset = filePos(file)/NEXUS_PADDING;
 			if(saveAsDeepzoom) {
-				std::string texFilePath = deepzoomFilePath(deepzoomFolder, i, "jpg");
+				std::string texFilePath = deepzoomFilePath(deepzoomFolder, i, "webp");
 				std::ofstream texFile(texFilePath, std::ios::binary | std::ios::trunc);
 				if(!texFile.is_open())
 					throw std::runtime_error("could not open texture file " + texFilePath + " for writing");

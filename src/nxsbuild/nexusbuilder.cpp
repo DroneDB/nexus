@@ -561,25 +561,28 @@ void NexusBuilder::processBlock(KDTreeSoup *input, StreamSoup *output, uint bloc
 			nx::Image nodetex = extractNodeTex(tmp, level, error, pixelXedge);
 			tmp.serialize(buffer, header.signature, node_patches);
 
+			// Encode texture outside the lock (CPU-intensive)
+			std::vector<unsigned char> jpegBuf;
+			nodetex.saveToMemory(jpegBuf, tex_quality);
+
 			Texture t;
 
 			{
-				std::lock_guard<std::mutex> locker(m_textures);
+				// Lock both mutexes atomically to ensure textures[] order matches nodeTex order.
+				// Without this, thread interleaving between the two locks causes textures[]
+				// to have non-monotonic offsets, breaking Texture::getSize() which relies on
+				// (this+1)->offset - this->offset.
+				std::scoped_lock locker(m_textures, m_builder);
 				t.offset = (uint32_t)(nodeTex.size()/NEXUS_PADDING);
 
 				output_pixels += nodetex.width()*nodetex.height();
 
-				// Write JPEG to nodeTex temp file
-				std::vector<unsigned char> jpegBuf;
-				nodetex.saveToMemory(jpegBuf, tex_quality);
 				nodeTex.write(reinterpret_cast<const char*>(jpegBuf.data()), jpegBuf.size());
 
 				uint64_t size = pad(nodeTex.size());
 				nodeTex.resize(size);
 				nodeTex.seek(size);
-			}
-			{
-				std::lock_guard<std::mutex> locker(m_builder);
+
 				textures.push_back(t);
 				for(Patch &patch: node_patches)
 					patch.texture = (uint32_t)textures.size()-1;

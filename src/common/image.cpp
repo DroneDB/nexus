@@ -25,12 +25,9 @@ for more details.
 #include <stb_image_write.h>
 #include <stb_image_resize2.h>
 
-// For JPEG in-memory compression we use libjpeg-turbo (higher quality than stb for JPEG)
-#include <jpeglib.h>
-#include <csetjmp>
-
-// WebP decoding support
+// WebP encoding and decoding support
 #include <webp/decode.h>
+#include <webp/encode.h>
 
 #include "image.h"
 
@@ -188,6 +185,13 @@ bool Image::save(const std::string &filename, int quality) const {
 			rgb[i * 3 + 2] = pixels_[i * 4 + 2];
 		}
 		return stbi_write_jpg(filename.c_str(), width_, height_, 3, rgb.data(), quality) != 0;
+	} else if (ext == ".webp") {
+		std::vector<unsigned char> buf;
+		if (!saveToMemory(buf, quality)) return false;
+		std::ofstream f(filename, std::ios::binary | std::ios::trunc);
+		if (!f) return false;
+		f.write(reinterpret_cast<const char*>(buf.data()), buf.size());
+		return f.good();
 	} else if (ext == ".bmp") {
 		return stbi_write_bmp(filename.c_str(), width_, height_, 4, pixels_.data()) != 0;
 	}
@@ -195,49 +199,28 @@ bool Image::save(const std::string &filename, int quality) const {
 }
 
 // ---------------------------------------------------------------------------
-// Save to memory (JPEG via libjpeg-turbo for quality control)
+// Save to memory (WebP encoding)
 // ---------------------------------------------------------------------------
 
 bool Image::saveToMemory(std::vector<unsigned char> &outBuffer, int quality) const {
 	if (isNull()) return false;
 
-	struct jpeg_compress_struct cinfo;
-	struct jpeg_error_mgr jerr;
-	cinfo.err = jpeg_std_error(&jerr);
-	jpeg_create_compress(&cinfo);
-
-	unsigned char *jpegBuf = nullptr;
-	unsigned long jpegSize = 0;
-	jpeg_mem_dest(&cinfo, &jpegBuf, &jpegSize);
-
-	cinfo.image_width = width_;
-	cinfo.image_height = height_;
-	cinfo.input_components = 3;
-	cinfo.in_color_space = JCS_RGB;
-
-	jpeg_set_defaults(&cinfo);
-	jpeg_set_quality(&cinfo, quality, TRUE);
-	jpeg_simple_progression(&cinfo);
-	jpeg_start_compress(&cinfo, TRUE);
-
-	// Convert RGBA -> RGB row by row
-	std::vector<unsigned char> row(width_ * 3);
-	while (cinfo.next_scanline < cinfo.image_height) {
-		const unsigned char *src = scanLine(cinfo.next_scanline);
-		for (int x = 0; x < width_; x++) {
-			row[x * 3 + 0] = src[x * 4 + 0];
-			row[x * 3 + 1] = src[x * 4 + 1];
-			row[x * 3 + 2] = src[x * 4 + 2];
-		}
-		unsigned char *rowPtr = row.data();
-		jpeg_write_scanlines(&cinfo, &rowPtr, 1);
+	// Convert RGBA -> RGB (WebP lossy works best with 3-channel input)
+	std::vector<unsigned char> rgb(width_ * height_ * 3);
+	for (int i = 0; i < width_ * height_; i++) {
+		rgb[i * 3 + 0] = pixels_[i * 4 + 0];
+		rgb[i * 3 + 1] = pixels_[i * 4 + 1];
+		rgb[i * 3 + 2] = pixels_[i * 4 + 2];
 	}
 
-	jpeg_finish_compress(&cinfo);
-	jpeg_destroy_compress(&cinfo);
+	uint8_t *webpBuf = nullptr;
+	size_t webpSize = WebPEncodeRGB(rgb.data(), width_, height_, width_ * 3,
+		                             static_cast<float>(quality), &webpBuf);
+	if (webpSize == 0 || !webpBuf)
+		return false;
 
-	outBuffer.assign(jpegBuf, jpegBuf + jpegSize);
-	free(jpegBuf);
+	outBuffer.assign(webpBuf, webpBuf + webpSize);
+	WebPFree(webpBuf);
 	return true;
 }
 

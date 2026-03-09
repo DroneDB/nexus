@@ -9,7 +9,7 @@ var minFps        = 15;
 var maxPending    = 3;
 var maxBlocked    = 3;
 var maxReqAttempt = 2;
-var maxCacheSize  = 1024 *(1<<20); 
+var maxCacheSize  = 1024 *(1<<20);
 var drawBudget    = 5*(1<<20);
 
 function _Cache() {
@@ -30,12 +30,12 @@ function _Cache() {
     t.cacheSize = 0;
     t.candidates = [];   //list of nodes to be loaded
     t.nodes = new Map();        //for each mesh a list of node ids.
-    
+
     t.last_frametime = 0;
     t.frametime = 0;
     t.end_frametime = 0;
 
-    t.debug = { 
+    t.debug = {
         verbose : false,  //debug messages
         nodes   : false,  //color each node
         draw    : false,  //final rendering call disabled
@@ -54,9 +54,9 @@ _Cache.prototype = {
     getMaxCacheSize: function()      { return this.maxCacheSize; },
     setMaxCacheSize: function(size)  { this.maxCacheSize = size; },
     setTargetError:  function(error) { this.targetError = error; },
-    
+
     loadCorto: function() {
-        let workerPath = this.cortopath + 'corto.worker.js'; 
+        let workerPath = this.cortopath + 'corto.worker.js';
         try {
             workerPath = new URL('./corto.worker.js', import.meta.url).href;
         } catch (e) {
@@ -80,7 +80,7 @@ _Cache.prototype = {
         this.corto = corto;
     },
 
-    
+
     beginFrame: function(fps) { //each context has a separate frame count.
         let c = this;
         c.frametime = performance.now();
@@ -118,9 +118,9 @@ _Cache.prototype = {
 
 
     requestNode: function(mesh, id) {
-	    mesh.status[id] = 2; 
+	    mesh.status[id] = 2;
 
-	    
+
 	    this.cacheSize += mesh.nsize[id];
 	    mesh.reqAttempt[id] = 0;
 
@@ -140,7 +140,7 @@ _Cache.prototype = {
 		let end = mesh.deepzoom ? 0 : mesh.noffsets[id+1];
 	    let request = mesh.georeq[id] = mesh.httpRequest(url,
 		    start,
-		    end, 
+		    end,
 		    ()=>{
                 delete mesh.georeq[id];
                 this.loadNodeGeometry(request, mesh, id);
@@ -170,15 +170,15 @@ _Cache.prototype = {
 	    mesh.texref[tex]++;
 	    mesh.status[id]++;
 
-		let url = mesh.deepzoom ? mesh.baseurl + tex + ".jpg" : mesh.url;
+		let url = mesh.deepzoom ? mesh.baseurl + tex + ".webp" : mesh.url;
 		let start = mesh.deepzoom ? 0 : mesh.textures[tex];
 		let end = mesh.deepzoom ? 0 : mesh.textures[tex+1];
 	    let request = mesh.texreq[tex] = mesh.httpRequest(url,
 		    start,
 		    end,
-		    ()=>{ 
+		    ()=>{
                 delete mesh.texreq[tex];
-                this.loadNodeTexture(request, mesh, id, tex); 
+                this.loadNodeTexture(request, mesh, id, tex);
 
             },
 		    ()=>{
@@ -224,7 +224,7 @@ _Cache.prototype = {
 
     loadNodeGeometry: function(request, mesh, id) {
 	    if(mesh.status[id] == 0) return;
-        
+
 	    if(!mesh.compressed)
 		    this.readyGeometryNode(mesh, id, request.response);
 	    else {
@@ -263,7 +263,7 @@ _Cache.prototype = {
             var img = document.createElement('img');
             img.onerror = function(e) { console.log("Texture loading error!"); };
             img.src = urlCreator.createObjectURL(blob);
-    
+
             img.onload = function() {
                 urlCreator.revokeObjectURL(img.src);
                 callback(img);
@@ -312,7 +312,7 @@ _Cache.prototype = {
         const nf = mesh.nfaces[id];
 	    let geometry = {};
 
-	    
+
 	    if(!mesh.corto) {
 		    geometry.index  = new Uint16Array(buffer, nv*mesh.vsize,  nf*3);
             geometry.position =  new Float32Array(buffer, 0, nv*3);
@@ -332,7 +332,7 @@ _Cache.prototype = {
                 off += nv*4;
 			}
 
-		
+
 	    } else {
             geometry = buffer;
 	    }
@@ -354,7 +354,7 @@ _Cache.prototype = {
 	    mesh.status[id]--;
         if(mesh.status[id] != 1) throw "A ready node should have status ==1"
 
-		
+
 		mesh.reqAttempt[id] = 0;
         //this.pending--;
         mesh.createNode(id);
@@ -371,7 +371,7 @@ _Cache.prototype = {
         for(let id of this.nodes.get(mesh))
             this.removeNode(mesh, id);
         this.nodes.delete(mesh);
-    }, 
+    },
 
     update: function() {
         if(this.pending >= maxPending)
@@ -380,7 +380,7 @@ _Cache.prototype = {
         //the best candidate has the highest error
         let best = null;
         for(let c of this.candidates) {
-            if(c.mesh.status[c.id] == 0 && (!best || c.error > best.error)) 
+            if(c.mesh.status[c.id] == 0 && (!best || c.error > best.error))
                 best = c;
 	    }
         if(!best) return;
@@ -396,13 +396,13 @@ _Cache.prototype = {
             this.lastupdate =  now;
         }
     */
-        
-            
+
+
         //make room for new nodes!
-        
+
 	    while(this.cacheSize > this.maxCacheSize) {
             let worst = null;
-            
+
             //find node with smallest error in cache and remove it if worse than the best candidate.
             for(let [mesh, ids] of this.nodes) {
                 for(let id of ids) {

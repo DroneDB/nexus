@@ -19,7 +19,7 @@ struct NexusBuildOptions {
     float texel_weight          = 0.1f;     // relative weight of texels
     int   top_node_faces        = 4096;
     float vertex_quantization   = 0.0f;     // 0.0 = disabled
-    int   texture_quality       = 95;       // JPEG texture quality
+    int   texture_quality       = 90;       // WebP texture quality
     int   ram_buffer_mb         = 16000;    // approximate RAM budget (MB)
     float scaling               = 0.5f;     // simplification ratio
     int   skip_levels           = 0;        // skip simplify levels

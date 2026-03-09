@@ -14,7 +14,6 @@ set(CMAKE_WINDOWS_EXPORT_ALL_SYMBOLS ON)
 # --- vcpkg packages ---
 find_package(ZLIB       REQUIRED)
 find_package(PNG        REQUIRED)
-find_package(JPEG       REQUIRED)
 find_package(plog       CONFIG REQUIRED)
 find_package(Stb REQUIRED)
 find_package(WebP CONFIG REQUIRED)

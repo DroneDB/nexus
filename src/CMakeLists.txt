@@ -79,7 +79,6 @@ target_link_libraries(nexus PUBLIC
 	corto
 	ZLIB::ZLIB
 	PNG::PNG
-	JPEG::JPEG
 	plog::plog
 	WebP::webp
 )
