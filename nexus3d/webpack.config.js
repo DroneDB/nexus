@@ -10,7 +10,7 @@ module.exports = {
   },
 
   output: {
-    path: path.resolve(__dirname + '/dist'),
+    path: path.resolve(__dirname + 'dist'),
     filename: '[name].bundle.js',
   },
 
@@ -48,7 +48,7 @@ module.exports = {
     new webpack.HotModuleReplacementPlugin(),
     new HtmlWebpackPlugin({
       title: 'Nexus3D',
-      template: __dirname + '/dist/index.html',
+      template: path.resolve(__dirname + '/src/index.html'),
       inject: 'body'
     }),
   ],

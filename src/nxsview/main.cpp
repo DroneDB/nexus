@@ -59,7 +59,9 @@ public:
 
 
 int main(int argc, char *argv[]) {
+#if QT_VERSION < 0x060000
 	QApplication::setAttribute(Qt::AA_X11InitThreads);
+#endif
 	QApplication app(argc, argv);
 	QMyWindow *window = new QMyWindow(NULL);
 

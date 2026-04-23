@@ -19,6 +19,7 @@ for more details.
 #include <QFileInfo>
 #include <QDir>
 #include <QTextStream>
+#include <QRegularExpression>
 #include <iostream>
 
 
@@ -176,8 +177,8 @@ void ObjLoader::readMTL(QFile &file) {
 				}
 				if(str.startsWith("Map_Kd", Qt::CaseInsensitive)){
 					txtfname = str.mid(7).trimmed();
-					txtfname = txtfname.remove(QRegExp("^(\")"));
-					txtfname = txtfname.remove(QRegExp("(\")$"));
+					txtfname = txtfname.remove(QRegularExpression("^(\")")); 
+					txtfname = txtfname.remove(QRegularExpression("(\")$"));
 					continue;
 				}
 				if(str.startsWith("Kd", Qt::CaseInsensitive)){
@@ -285,8 +286,8 @@ void ObjLoader::cacheVertices() {
 				QFileInfo info = QFileInfo(fname);
 
 				mtl = QString(buffer).mid(7).trimmed();
-				mtl = mtl.remove(QRegExp("^(\")"));
-				mtl = mtl.remove(QRegExp("(\")$"));
+				mtl = mtl.remove(QRegularExpression("^(\")")); 
+				mtl = mtl.remove(QRegularExpression("(\")$"));
 				mtl = info.dir().filePath(mtl);
 			}
 		}
@@ -363,8 +364,8 @@ quint32 ObjLoader::getTriangles(quint32 size, Triangle *faces) {
 
 		QString str = QString(buffer).simplified();
 
-		QRegExp rx("[ ]");// match a space
-		QStringList list = str.split(rx, QString::SkipEmptyParts);
+		QRegularExpression rx("[ ]");// match a space
+		QStringList list = str.split(rx, Qt::SkipEmptyParts);
 		list.removeFirst(); //'f'
 		if (list.last().startsWith('\n') || list.last().startsWith('\r'))
 			list.removeLast();

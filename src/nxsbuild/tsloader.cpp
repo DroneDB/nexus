@@ -77,7 +77,7 @@ bool TsLoader::useColormapFor(const QString &_property, const QString &palette) 
 				colormap.maxValue = line.split(" ").back().toFloat(&ok);
 				if(!ok) throw QString("Proble parsing line: %1").arg(line);
 			}
-			if(line[0] == "}") {
+			if(line[0] == '}') {
 				break;
 			}
 		}

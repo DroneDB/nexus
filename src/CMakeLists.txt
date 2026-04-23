@@ -66,7 +66,7 @@ target_include_directories(nexus PUBLIC
 	$<INSTALL_INTERFACE:include>
 )
 
-target_link_libraries(nexus PUBLIC vcglib corto Qt5::Widgets)
+target_link_libraries(nexus PUBLIC vcglib corto Qt6::Widgets)
 
 if (WIN32)
 	target_compile_definitions(nexus PUBLIC NOMINMAX)
