@@ -1,5 +1,5 @@
 #export CMAKE_PREFIX_PATH=path to Qt/5.5/gcc_64/ (where you would find bin/qmake)
-cmake_minimum_required(VERSION 3.1)
+cmake_minimum_required(VERSION 3.5)
 project(nexus)
 
 option(BUILD_NXS_BUILD "" OFF)
@@ -48,7 +48,13 @@ endif()
 set(BUILD_CORTO_CODEC_UNITY OFF)
 set(BUILD_CORTO_EXE OFF)
 
+# corto is a third-party submodule (cnr-isti-vclab/corto) pinned at a commit whose
+# CMakeLists still declares cmake_minimum_required(VERSION 3.1). CMake >= 4.0 removed
+# compatibility with versions < 3.5, so floor the policy version only for the corto
+# subtree without modifying the vendored third-party sources.
+set(CMAKE_POLICY_VERSION_MINIMUM 3.5)
 add_subdirectory(src/corto EXCLUDE_FROM_ALL)
+unset(CMAKE_POLICY_VERSION_MINIMUM)
 
 add_subdirectory(src)
 
