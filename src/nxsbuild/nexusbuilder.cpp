@@ -94,7 +94,20 @@ vector<bool> NodeBox::markBorders(Node &node, vcg::Point3f *p, uint16_t *f) {
 	return border;
 }
 
-NexusBuilder::NexusBuilder(quint32 components): chunks("cache_chunks"), scaling(0.5), useNodeTex(true), tex_quality(92), nodeTex("cache_tex") {
+// Build a temporary-file template for the builder's out-of-core caches. When
+// cacheDir is non-empty the caches are created there (an absolute path is
+// honoured by VirtualMemory and QTemporaryFile), keeping multi-GB scratch on the
+// same volume as the output and reclaimable as a unit. When empty the historical
+// names are used: VirtualMemory-based caches fall back to the system temp dir,
+// the QTemporaryFile-based nodeTex to the process working directory.
+static QString nexusCacheTemplate(const QString &cacheDir, const char *name) {
+	return cacheDir.isEmpty() ? QString::fromLatin1(name)
+	                          : (cacheDir + "/" + QString::fromLatin1(name));
+}
+
+NexusBuilder::NexusBuilder(quint32 components, const QString &cacheDir):
+	chunks(nexusCacheTemplate(cacheDir, "cache_chunks")), scaling(0.5), useNodeTex(true),
+	tex_quality(92), nodeTex(nexusCacheTemplate(cacheDir, "cache_tex")) {
 
 	Signature &signature = header.signature;
 	signature.vertex.setComponent(VertexElement::COORD, Attribute(Attribute::FLOAT, 3));

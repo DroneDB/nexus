@@ -79,7 +79,11 @@ public:
 class NexusBuilder {
 public:
 	enum Components { FACES = 1, NORMALS = 2, COLORS = 4, TEXTURES = 8 };
-	NexusBuilder(quint32 components);
+	// cacheDir, when non-empty, is the directory where the out-of-core caches
+	// (chunks and the per-node texture file) are created. An absolute path keeps
+	// the (possibly multi-GB) scratch on the same volume as the output and lets it
+	// be cleaned up as a unit. When empty, historical defaults are used.
+	NexusBuilder(quint32 components, const QString &cacheDir = QString());
 	NexusBuilder(nx::Signature &sig);
 
 	bool hasNormals() { return header.signature.vertex.hasNormals(); }
@@ -140,7 +144,7 @@ public:
 	int max_node_triangles = 32000;
 	bool createPowTwoTex;
 	bool deepzoom = false; //use deepzoom style where each node is in a different file.
-	
+
 	//if too many texel per edge, simplification is inhibited, but don't quit prematurely
 	int skipSimplifyLevels = 0;
 

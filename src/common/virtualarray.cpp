@@ -23,14 +23,24 @@ for more details.
 
 using namespace std;
 
+// Build the QTemporaryFile template from a caller-supplied prefix.
+// If 'prefix' is an absolute path, it is used as-is so callers can place the
+// out-of-core cache in a directory of their choosing (e.g. a per-build temp
+// folder that is cleaned up as a unit, on the same large volume as the output).
+// Otherwise the prefix is created inside the system temporary directory,
+// preserving the historical behaviour.
+static QString virtualMemoryTemplate(const QString &prefix) {
+	return QDir::isAbsolutePath(prefix) ? prefix : (QDir::tempPath() + "/" + prefix);
+}
+
 VirtualMemory::VirtualMemory(QString prefix):
-	QTemporaryFile(QDir::tempPath() +"/" + prefix),
+	QTemporaryFile(virtualMemoryTemplate(prefix)),
 	used_memory(0),
 	max_memory(1<<28) {
 
 	setAutoRemove(true);
 	if(!open())
-		throw QString("unable to open temporary file: " + QDir::tempPath() +"/" + prefix);
+		throw QString("unable to open temporary file: " + virtualMemoryTemplate(prefix));
 
 }
 
