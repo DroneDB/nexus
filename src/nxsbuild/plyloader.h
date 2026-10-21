@@ -51,6 +51,8 @@ private:
 
 	void init();
 	void cacheVertices();
+	//reads the next element of the current ply element type, throws if the file ends or is malformed
+	void readElement(void *element, const char *name, quint64 index, quint64 total);
 };
 
 #endif // NX_PLYLOADER_H

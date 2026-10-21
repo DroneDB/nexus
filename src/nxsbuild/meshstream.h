@@ -19,6 +19,7 @@ for more details.
 #define NX_MESHSTREAM_H
 
 #include <QStringList>
+#include <memory>
 #include <vcg/space/box3.h>
 
 #include "trianglesoup.h"
@@ -64,7 +65,7 @@ protected:
 	quint64 current_triangle;   //used both for loading and streaming
 	quint64 current_block;
 
-	MeshLoader *getLoader(QString file, QString material);
+	std::unique_ptr<MeshLoader> getLoader(QString file, QString material);
 		
 	virtual void flush() = 0;
 	virtual void loadMesh(MeshLoader *loader) = 0;

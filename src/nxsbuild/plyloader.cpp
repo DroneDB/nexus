@@ -29,7 +29,8 @@ struct PlyFace {
 	quint32 f[3];
 	float t[6];
 	quint32 texNumber;
-	unsigned char n;
+	unsigned char n;  //number of vertex indices read into f
+	unsigned char nt; //number of texture coordinates read into t
 };
 
 struct PlyVertex {
@@ -98,7 +99,7 @@ PropDescriptor vindex_ushort[1]=	{
 
 PropDescriptor plyprop4[1]=	{
 	{"face", "texcoord",T_FLOAT,T_FLOAT,offsetof(PlyFace,t[0]),
-	 1,0,T_UCHAR,T_UCHAR, offsetof(PlyFace,n) ,0}
+	 1,0,T_UCHAR,T_UCHAR, offsetof(PlyFace,nt) ,0}
 };
 
 PropDescriptor plyprop5[1]=	{
@@ -239,6 +240,11 @@ void PlyLoader::init() {
 	pf.SetCurElement(vertices_element);
 }
 
+void PlyLoader::readElement(void *element, const char *name, quint64 index, quint64 total) {
+	if(pf.Read(element) == -1)
+		throw QString("ply file is truncated or malformed: could not read %1 %2 of %3").arg(name).arg(index).arg(total);
+}
+
 void PlyLoader::cacheVertices() {
 	vertices.setElementsPerBlock(1<<20);
 	vertices.resize(n_vertices);
@@ -247,7 +253,7 @@ void PlyLoader::cacheVertices() {
 	//caching vertices on temporary file
 	for(quint64 i = 0; i < n_vertices; i++) {
 		Vertex &v = vertices[i];
-		pf.Read((void *)&vertex);
+		readElement(&vertex, "vertex", i, n_vertices);
 		if(double_coords) {
 			v.v[0] = vertex.dv[0] - origin[0];
 			v.v[1] = vertex.dv[1] - origin[1];
@@ -293,11 +299,16 @@ quint32 PlyLoader::getTriangles(quint32 size, Triangle *buffer) {
 
 	quint32 count = 0;
 
-	PlyFace face;
-	face.texNumber = 0;
+	PlyFace face = PlyFace();
 	for(quint32 i = 0; i < size && current_triangle < n_triangles; i++) {
 
-		pf.Read((void *) &face);
+		//the vertex index list stores its length in face.n: a list shorter
+		//than 3 (or no index list at all) leaves face.f unwritten.
+		face.n = 0;
+		readElement(&face, "face", current_triangle, n_triangles);
+		if(face.n < 3)
+			throw QString("ply file is malformed: face %1 has %2 vertex indices, expected 3").arg(current_triangle).arg(int(face.n));
+
 		Triangle &current = buffer[count];
 
 		for(int k = 0; k < 3; k++) {
@@ -347,7 +358,7 @@ quint32 PlyLoader::getVertices(quint32 size, Splat *splats) {
 	quint32 count = 0;
 	for(quint32 i = 0; i < size && current_vertex < n_vertices; i++) {
 
-		pf.Read((void *)&vertex);
+		readElement(&vertex, "vertex", current_vertex, n_vertices);
 
 		Splat &v = splats[count++];
 		current_vertex++;

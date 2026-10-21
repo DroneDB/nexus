@@ -45,22 +45,22 @@ void Stream::setVertexQuantization(double q) {
 	vertex_quantization = q;
 }
 
-MeshLoader *Stream::getLoader(QString file, QString material) {
-MeshLoader *loader = nullptr;
+std::unique_ptr<MeshLoader> Stream::getLoader(QString file, QString material) {
+	std::unique_ptr<MeshLoader> loader;
 	if(file.endsWith(".ply"))
-		loader = new PlyLoader(file);
+		loader.reset(new PlyLoader(file));
 
 	else if(file.endsWith(".tsp"))
-		loader = new TspLoader(file);
+		loader.reset(new TspLoader(file));
 
 	else if(file.endsWith(".obj"))
-		loader = new ObjLoader(file, material);
+		loader.reset(new ObjLoader(file, material));
 
 	else if(file.endsWith(".stl"))
-		loader = new STLLoader(file);
+		loader.reset(new STLLoader(file));
 
 	else
-		loader = new VcgLoader<VcgMesh>(file);
+		loader.reset(new VcgLoader<VcgMesh>(file));
 	/*        else if(file.endsWith(".off"))
 		loader = new OffLoader(file, vertex_quantization, max_memory);*/
 
@@ -74,21 +74,19 @@ vcg::Box3d Stream::getBox(QStringList paths) {
 	vcg::Box3d box;
 
 	quint32 length = (1<<20); //times 52 bytes. (128Mb of data)
-	Splat *vertices = new Splat[length];
+	std::unique_ptr<Splat[]> vertices(new Splat[length]);
 	
 	
 	foreach(QString file, paths) {
 		//qDebug() << "Computing box for " << qPrintable(file);
-		MeshLoader *loader = getLoader(file, QString());
+		std::unique_ptr<MeshLoader> loader = getLoader(file, QString());
 		loader->setMaxMemory(512*(1<<20)); //read only once... does'nt really matter.
 		while(true) {
-			int count = loader->getVertices(length, vertices);
+			int count = loader->getVertices(length, vertices.get());
 			if(count == 0) break;
 		}
 		box.Add(loader->box);
-		delete loader;
 	}
-	delete []vertices;
 	return box;
 }
 
@@ -114,10 +112,9 @@ void Stream::load(QStringList paths, QString material) {
 	has_textures = true;
 	foreach(QString file, paths) {
 		//qDebug() << "Reading" << qPrintable(file);
-		MeshLoader *loader = getLoader(file, material);
-		load(loader);
+		std::unique_ptr<MeshLoader> loader = getLoader(file, material);
+		load(loader.get());
 		//box.Add(loader->box); //this lineB AFTER the mesh is streamed
-		delete loader;
 	}
 	current_triangle = 0;
 	flush();
@@ -166,16 +163,15 @@ void StreamSoup::loadMesh(MeshLoader *loader) {
 	loader->texOffset = textures.size();
 	//get 128Mb of data
 	quint32 length = (1<<20); //times 52 bytes.
-	Triangle *triangles = new Triangle[length];
+	std::unique_ptr<Triangle[]> triangles(new Triangle[length]);
 	while(true) {
-		int count = loader->getTriangles(length, triangles);
+		int count = loader->getTriangles(length, triangles.get());
 		if(count == 0) break;
 		for(int i = 0; i < count; i++) {
 			assert(triangles[i].node == 0);
 			pushTriangle(triangles[i]);
 		}
 	}
-	delete []triangles;
 }
 
 void StreamSoup::pushTriangle(Triangle &triangle) {
@@ -247,9 +243,9 @@ void StreamCloud::loadMesh(MeshLoader *loader) {
 	loader->setMaxMemory(maxMemory());
 	//get 128Mb of data
 	quint32 length = (1<<20); //times 52 bytes.
-	Splat *vertices = new Splat[length];
+	std::unique_ptr<Splat[]> vertices(new Splat[length]);
 	while(true) {
-		int count = loader->getVertices(length, vertices);
+		int count = loader->getVertices(length, vertices.get());
 
 		if(count == 0) break;
 		for(int i = 0; i < count; i++) {
@@ -257,7 +253,6 @@ void StreamCloud::loadMesh(MeshLoader *loader) {
 			pushVertex(vertices[i]);
 		}
 	}
-	delete []vertices;
 }
 
 void StreamCloud::pushVertex(Splat &vertex) {
