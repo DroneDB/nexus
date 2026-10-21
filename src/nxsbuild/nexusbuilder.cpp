@@ -174,6 +174,10 @@ void NexusBuilder::create(KDTree *tree, Stream *stream, uint top_node_size) {
 		skipSimplifyLevels--;
 	} while(stream->size() > top_node_size);
 
+	//only the sink: every block was empty (no valid triangles or points in the input)
+	if(nodes.size() < 2)
+		throw QString("no valid geometry in the input: the multiresolution dag would be empty");
+
 	reverseDag();
 	saturate();
 }
@@ -917,13 +921,9 @@ void NexusBuilder::save(QString filename) {
 	header.version = 2;
 
 	//find roots and adjust error
-	uint32_t nroots = header.n_nodes;
-	for(uint32_t j = 0; j < nroots; j++) {
-		for(uint32_t i = nodes[j].first_patch; i < nodes[j].last_patch(); i++)
-			if(patches[i].node < nroots)
-				nroots = patches[i].node;
+	uint32_t nroots = countDagRoots(nodes.data(), patches.data(), header.n_nodes);
+	for(uint32_t j = 0; j < nroots; j++)
 		nodes[j].error = nodes[j].tight_radius;
-	}
 
 	header.sphere = vcg::Sphere3f();
 	for(uint32_t i = 0; i < nroots; i++)

@@ -92,13 +92,7 @@ void NexusData::loadHeader(char *buffer) {
 }
 
 void NexusData::countRoots() {
-	//find number of roots:
-	nroots = header.n_nodes;
-	for(uint32_t j = 0; j < nroots; j++) {
-		for(uint32_t i = nodes[j].first_patch; i < nodes[j].last_patch(); i++)
-			if(patches[i].node < nroots)
-				nroots = patches[i].node;
-	}
+	nroots = countDagRoots(nodes, patches, header.n_nodes);
 }
 
 uint64_t NexusData::indexSize() {

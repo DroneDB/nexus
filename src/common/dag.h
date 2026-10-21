@@ -91,5 +91,22 @@ struct Texture {
 	uint64_t getSize() { return getEndOffset() - getBeginOffset(); }
 };
 
+/* Number of root nodes of a dag stored as nexus stores it: parents before children
+   (roots first) and a sink node last. The sink is not a real node: it terminates the
+   array so that last_patch() of the last real node can read its first_patch, and the
+   leaves link to it. Roots are the nodes before the smallest node index any root links to.
+   Only real nodes are visited, because last_patch() on the sink would read past the array. */
+inline uint32_t countDagRoots(Node *nodes, Patch *patches, uint32_t n_nodes) {
+	if(n_nodes == 0)
+		return 0;
+	uint32_t nroots = n_nodes - 1; //the sink is never a root
+	for(uint32_t j = 0; j < nroots; j++) {
+		for(uint32_t i = nodes[j].first_patch; i < nodes[j].last_patch(); i++)
+			if(patches[i].node < nroots)
+				nroots = patches[i].node;
+	}
+	return nroots;
+}
+
 }//
 #endif // NX_DAG_H
