@@ -88,9 +88,13 @@ void ObjLoader::cacheTextureUV() {
 			continue;
 
 		if (line[1] == 't' && text::isSpace(line[2])) {      //skip other properties
+			//vt u [v [w]]: v is optional and 0 when missing, w is not used
 			float vt0 = 0.0, vt1 = 0.0;
 			const char *p = line + 3;
-			if (!text::parseFloat(p, vt0) || !text::parseFloat(p, vt1))
+			if (!text::parseFloat(p, vt0))
+				throw Error("error parsing vtxt  line: " + excerpt(line));
+			p = text::skipSpaces(p);
+			if (!endsToken(*p) && !text::parseFloat(p, vt1))
 				throw Error("error parsing vtxt  line: " + excerpt(line));
 			vtxtuv.push_back(vt0);
 			vtxtuv.push_back(vt1);
