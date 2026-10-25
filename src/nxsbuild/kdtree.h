@@ -37,6 +37,7 @@ public:
 	int children[2];     //first and second child
 	int block;             //bin where triangle are stored.
 	double weight = 0.0;
+	bool divisible = true; //false once a split of this leaf turned out not to divide it (see KDTree::split)
 
 	KDCell(): split(-1), middle(0), block(-1) {
 		children[0] = children[1] = -1;
@@ -77,7 +78,8 @@ protected:
 	virtual void findRealMiddle(KDCell &node)  = 0;
 	virtual void splitNode(KDCell &node, KDCell &child0, KDCell &child1) = 0;
 
-	void split(int n);
+	//false, leaving the leaf as it is, when its box cannot be divided (see kdtree.cpp)
+	bool split(int n);
 	float findMiddle(KDCell &node);
 	bool isIn(vcg::Box3f &box, vcg::Point3f &p); //check if point is in the box (using axes) semiopen box.
 	vcg::Box3f computeBox(vcg::Box3f &b);

@@ -152,10 +152,30 @@ bool KDTree::isIn(vcg::Point3f *axes, vcg::Box3f &box, vcg::Point3f &p) {
 
 }//check if point is in the box (using axes) semiopen box.
 
-void KDTree::split(int32_t node_number) {
+//The error for a leaf that is full and cannot be split. Smaller nodes would not help: they would
+//hold fewer of the elements that cannot be told apart.
+static nx::Error indivisibleLeaf(uint64_t capacity, const char *elements) {
+	return nx::Error("more than " + std::to_string(capacity) + " " + elements + " lie in a region of the model "
+	                 "too small to divide (" + elements + " that coincide, or closer to each other than the "
+	                 "precision of their coordinates): the model cannot be split into Nexus nodes");
+}
+
+bool KDTree::split(int32_t node_number) {
 	KDCell &node = cells[node_number];
 
 	findMiddle(node);
+
+	//A plane that is not strictly inside the box (the box is as thin as the floats allow, around
+	//triangles that lie in the same place) gives one child the box of its parent and every
+	//element: splitting that child again would do the same, forever, adding a block to the
+	//scratch file each time. Each split that can be made makes the box smaller, so splitting
+	//ends either way.
+	const float lowest = node.box.min[node.split];
+	const float highest = node.box.max[node.split];
+	if(!(node.middle > lowest && node.middle < highest)) {
+		node.divisible = false;
+		return false;
+	}
 
 	//create new nodes
 	KDCell child0;
@@ -175,6 +195,7 @@ void KDTree::split(int32_t node_number) {
 
 	cells.push_back(child0);
 	cells.push_back(child1);
+	return true;
 }
 
 
@@ -354,12 +375,15 @@ void KDTreeSoup::pushTriangle(Triangle &t) {
 			bool too_large = node_triangles >=triangles_per_block;
 			bool too_small = node_triangles < triangles_per_block/16;
 			bool too_heavy = node.weight > max_weight;
-			if(too_small || (!too_large && !too_heavy)) {
+			//a leaf that cannot be divided takes triangles as long as it has room for them
+			if(too_small || (!too_large && (!too_heavy || !node.divisible))) {
 				Soup soup = get(node.block);
 				soup.push_back(t);
 				node.weight += w;
 				break;
 			}
+			if(!node.divisible)
+				throw indivisibleLeaf(triangles_per_block, "triangles");
 			//no space, add 1 block, split node and continue
 			//reference to node might not be valid anymore.
 			split(node_number);
@@ -503,7 +527,8 @@ void KDTreeCloud::pushVertex(Splat &v) {
 			}
 			//no space, add 1 block, split node and continue
 			//reference to node might not be valid anymore.
-			split(node_number);
+			if(!split(node_number))
+				throw indivisibleLeaf(triangles_per_block, "points");
 
 		} else {
 			vcg::Point3f p(v.v);
