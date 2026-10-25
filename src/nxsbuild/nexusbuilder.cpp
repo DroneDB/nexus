@@ -530,6 +530,10 @@ void NexusBuilder::createCloudLevel(KDTreeCloud *input, StreamCloud *output, int
 
 
 
+//the most vertices a node may have: a node indexes its vertices with 16 bits (at most 65535), and
+//Nexus has always stopped a little below that
+static const size_t MAX_NODE_VERTICES = 60000;
+
 void NexusBuilder::processBlock(KDTreeSoup *input, StreamSoup *output, unsigned int block, int level) {
 	TMesh mesh;
 	TMesh tmp; //this is needed saving a mesh with vertices on seams duplicated., and for node tex coordinates to be rearranged
@@ -569,12 +573,13 @@ void NexusBuilder::processBlock(KDTreeSoup *input, StreamSoup *output, unsigned 
 			tmp.face[i].tex = mesh.face[i].tex;
 		}
 		tmp.splitSeams(header.signature);
-		if(tmp.vert.size() > 60000) {
-			cerr << "Unable to properly simplify due to fragmented parametrization\n"
-				 << "Try to reduce the size of the nodes using -f (default is 32768)" << endl;
-			//exit(0);
-			return;
-		}
+		//an error, not a node left out: skipping the block would leave a hole in the model, at
+		//this level and at every coarser one built from it
+		if(tmp.vert.size() > MAX_NODE_VERTICES)
+			throw nx::NodeTooLargeError("a node of " + std::to_string(ntriangles) + " triangles has " +
+			                            std::to_string(tmp.vert.size()) + " vertices once its texture seams are "
+			                            "split, more than the " + std::to_string(MAX_NODE_VERTICES) +
+			                            " a node holds (the texture parametrization is too fragmented)");
 
 		//save node in nexus temporary structure
 		mesh_size = tmp.serializedSize(header.signature);

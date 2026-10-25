@@ -36,6 +36,14 @@ public:
 	explicit TexturePackingError(const std::string &message): Error(message) {}
 };
 
+//A node of the model has more vertices than a node can hold once its texture seams are split (the
+//texture parametrization is too fragmented for nodes of this size): the input is fine, and the
+//build may succeed with fewer triangles per node.
+class NodeTooLargeError: public Error {
+public:
+	explicit NodeTooLargeError(const std::string &message): Error(message) {}
+};
+
 } //namespace
 
 #endif // NX_ERROR_H
