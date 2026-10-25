@@ -207,7 +207,14 @@ void ObjLoader::readMTL(QFile &file) {
 
 			if (txtfname.length() > 0) {
 				sanitizeTextureFilepath(txtfname);
-				resolveTextureFilepath(file.fileName(), txtfname);
+				//a texture name is relative to the .mtl that names it; when the .mtl is in
+				//another folder and the name is not found next to it, the .obj's folder is
+				//still tried, which is where every name was looked up before.
+				QString nextToMtl = QFileInfo(mtl).dir().filePath(txtfname);
+				if (QFileInfo::exists(nextToMtl))
+					txtfname = nextToMtl;
+				else
+					resolveTextureFilepath(file.fileName(), txtfname);
 				
 				textures_map.insert(mtltag, txtfname);
 				bool exists = false;
