@@ -1,8 +1,7 @@
 /*
 Nexus
 
-Copyright(C) 2012 - Federico Ponchio
-ISTI - Italian National Research Council - Visual Computing Lab
+Copyright (C) 2026 Digipa
 
 This program is free software; you can redistribute it and/or modify
 it under the terms of the GNU General Public License as published by
