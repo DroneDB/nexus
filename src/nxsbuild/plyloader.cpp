@@ -104,10 +104,10 @@ static bool addFaceList(PlyFile &pf, const char *name, int memtype, size_t offse
 	return false;
 }
 
-PlyLoader::PlyLoader(const std::string &filename):
+PlyLoader::PlyLoader(const std::string &filename, const std::string &cachePrefix):
 	vertices_element(-1),
 	faces_element(-1),
-	vertices("cache_plyvertex"),
+	vertices(cachePrefix),
 	n_vertices(0),
 	n_triangles(0),
 	current_triangle(0),

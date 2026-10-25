@@ -44,7 +44,9 @@ public:
 	vcg::Point3d scale = vcg::Point3d(1, 1, 1);
 	std::vector<std::string> colormap; //used to convert a value into a color, .ts only: the property and the palette
 
-	Stream();
+	//cachePrefix: where the loaders that need a scratch file put it (see VirtualMemory), the prefix
+	//of the stream's own scratch file
+	explicit Stream(const std::string &cachePrefix);
 	virtual ~Stream() {}
 	void setVertexQuantization(double q);
 	vcg::Box3d getBox(const std::vector<std::string> &paths);
@@ -64,6 +66,7 @@ protected:
 	std::vector<std::vector<uint64_t> > levels; //for each level the list of blocks
 	std::vector<uint64_t> order;          //order of the block for streaming
 
+	std::string cache_prefix;
 	double vertex_quantization; //a power of 2.
 	uint64_t current_triangle;   //used both for loading and streaming
 	uint64_t current_block;

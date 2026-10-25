@@ -33,10 +33,11 @@ for more details.
 
 using namespace std;
 
-Stream::Stream():
+Stream::Stream(const std::string &cachePrefix):
 	has_colors(false),
 	has_normals(false),
 	has_textures(false),
+	cache_prefix(cachePrefix),
 	vertex_quantization(0),
 	current_triangle(0),
 	current_block(0) {
@@ -49,7 +50,7 @@ void Stream::setVertexQuantization(double q) {
 std::unique_ptr<MeshLoader> Stream::getLoader(const std::string &file, const std::string &material) {
 	std::unique_ptr<MeshLoader> loader;
 	if(nx::endsWith(file, ".ply"))
-		loader.reset(new PlyLoader(file));
+		loader.reset(new PlyLoader(file, cache_prefix + "_plyvertex"));
 
 	else if(nx::endsWith(file, ".tsp"))
 		loader.reset(new TspLoader(file));
@@ -162,6 +163,7 @@ void Stream::computeOrder() {
 //SOUP
 
 StreamSoup::StreamSoup(const std::string &prefix):
+	Stream(prefix),
 	VirtualTriangleSoup(prefix) {
 }
 
@@ -292,6 +294,7 @@ uint64_t StreamSoup::addBlock(uint64_t level) {
 //Cloud
 
 StreamCloud::StreamCloud(const std::string &prefix):
+	Stream(prefix),
 	VirtualVertexCloud(prefix) {
 }
 

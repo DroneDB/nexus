@@ -31,7 +31,8 @@ struct PlyFace;
 
 class PlyLoader: public MeshLoader {
 public:
-	PlyLoader(const std::string &file);
+	//cachePrefix: the scratch file of the vertices goes there (see VirtualMemory)
+	PlyLoader(const std::string &file, const std::string &cachePrefix);
 	~PlyLoader();
 
 	void setMaxMemory(uint64_t max_memory);
