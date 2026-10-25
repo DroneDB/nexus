@@ -19,6 +19,7 @@ for more details.
 #include <math.h>
 #include <algorithm>
 #include "../common/error.h"
+#include "../common/pathutil.h"
 #include "../common/textparse.h"
 using namespace vcg;
 using namespace vcg::ply;
@@ -126,7 +127,7 @@ PlyLoader::PlyLoader(const std::string &filename):
 	current_vertex(0),
 	face(new PlyFace()) {
 
-	int val = pf.Open(filename.c_str(), PlyFile::MODE_READ);
+	int val = pf.Open(nx::systemPath(filename).c_str(), PlyFile::MODE_READ);
 	if(val == -1) {
 		int error = pf.GetError();
 		throw nx::Error("could not open file " + filename + ". Error: " + std::to_string(error));

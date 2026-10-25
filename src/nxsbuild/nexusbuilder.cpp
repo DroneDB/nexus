@@ -876,7 +876,7 @@ void NexusBuilder::save(const std::string &filename) {
 	const std::string basename = (filename.size() > 4 ? filename.substr(0, filename.size() - 4) : filename) + "_files";
 	if(header.signature.flags & Signature::Flags::DEEPZOOM) {
 		std::error_code ec;
-		std::filesystem::create_directory(nx::pathFromUtf8(basename), ec);
+		std::filesystem::create_directory(nx::nativePath(basename), ec);
 	}
 	for(unsigned int i = 0; i < node_chunk.size(); i++) {
 		uint32_t chunk = node_chunk[i];

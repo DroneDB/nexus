@@ -117,7 +117,7 @@ void MappedFile::openReadOnly(const std::string &path) {
 	close();
 	path_ = path;
 	writable_ = false;
-	const auto fsPath = pathFromUtf8(path);
+	const auto fsPath = nativePath(path);
 	const auto native = fsPath.c_str();
 #ifdef _WIN32
 	HANDLE handle = CreateFileW(native, GENERIC_READ,
@@ -158,7 +158,7 @@ void MappedFile::createTemporary(const std::string &prefix) {
 	//a name taken between the choosing and the creating is not an error: another one is picked
 	for(int attempt = 0; attempt < 100; attempt++) {
 		const std::string path = prefix + "." + randomSuffix();
-		const auto fsPath = pathFromUtf8(path);
+		const auto fsPath = nativePath(path);
 		const auto native = fsPath.c_str();
 #ifdef _WIN32
 		//deleted by the system when the last handle closes, even if the process is killed

@@ -35,7 +35,7 @@ namespace nx {
 	size_t StdNexusFile::size()
 	{
 		std::error_code ec;
-		const auto size = std::filesystem::file_size(pathFromUtf8(name), ec);
+		const auto size = std::filesystem::file_size(nativePath(name), ec);
 		return ec ? 0 : size_t(size);
 	}
 
@@ -88,7 +88,7 @@ namespace nx {
 
 	char *StdNexusFile::readDZFile(const std::string &path) {
 		std::error_code ec;
-		const auto size = std::filesystem::file_size(pathFromUtf8(path), ec);
+		const auto size = std::filesystem::file_size(nativePath(path), ec);
 		InputFile f;
 		if(ec || !f.open(path))
 			return nullptr;

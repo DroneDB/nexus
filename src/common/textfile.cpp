@@ -31,7 +31,7 @@ const size_t InitialBuffer = 1 << 20;
 
 bool InputFile::open(const std::string &path) {
 	close();
-	stream_.open(pathFromUtf8(path), std::ios::in | std::ios::binary);
+	stream_.open(nativePath(path), std::ios::in | std::ios::binary);
 	if(!stream_.is_open())
 		return false;
 	buffer_.resize(InitialBuffer + 1);
@@ -151,7 +151,7 @@ std::vector<char> readFile(const std::string &path) {
 	if(!file.open(path))
 		throw Error("could not open file " + path);
 	std::error_code ec;
-	const auto size = std::filesystem::file_size(pathFromUtf8(path), ec);
+	const auto size = std::filesystem::file_size(nativePath(path), ec);
 	if(ec)
 		throw Error("could not read file " + path + ": " + ec.message());
 	std::vector<char> content(static_cast<size_t>(size));
@@ -168,7 +168,7 @@ OutputFile::~OutputFile() {
 void OutputFile::open(const std::string &path) {
 	close();
 	path_ = path;
-	stream_.open(pathFromUtf8(path), std::ios::out | std::ios::binary | std::ios::trunc);
+	stream_.open(nativePath(path), std::ios::out | std::ios::binary | std::ios::trunc);
 	if(!stream_.is_open())
 		throw Error("could not open file " + path + " for writing");
 	pos_ = 0;

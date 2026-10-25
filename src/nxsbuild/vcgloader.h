@@ -3,6 +3,7 @@
 
 #include "meshloader.h"
 #include "../common/error.h"
+#include "../common/pathutil.h"
 #include "wrap/io_trimesh/import.h"
 
 template <typename Mesh> class VcgLoader: public MeshLoader {
@@ -17,7 +18,7 @@ public:
 	VcgLoader(const std::string &filename) {
 		Mesh *m = new Mesh;
 		int loadmask = 0;
-		if(vcg::tri::io::Importer<Mesh>::Open(*m, filename.c_str(), loadmask)!=0) {
+		if(vcg::tri::io::Importer<Mesh>::Open(*m, nx::systemPath(filename).c_str(), loadmask)!=0) {
 			delete m;
 			throw nx::Error("Failed loading file: "  + filename);
 		}

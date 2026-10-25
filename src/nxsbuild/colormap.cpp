@@ -1,4 +1,5 @@
 #include "colormap.h"
+#include "../common/pathutil.h"
 
 #include <map>
 #include <string>
@@ -14,7 +15,7 @@
 using namespace std;
 
 bool Colormap::loadFromCSV(const string& filename) {
-	ifstream file(filename);
+	ifstream file(nx::nativePath(filename));
 	if (!file.is_open()) return false;
 
 	colormap.clear();

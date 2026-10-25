@@ -43,9 +43,9 @@ std::string deepzoomFilePath(const std::string &folder, uint32_t index, const st
 
 void ensureDeepzoomFolder(const std::string &folder) {
 	std::error_code ec;
-	if(std::filesystem::is_directory(pathFromUtf8(folder), ec))
+	if(std::filesystem::is_directory(nativePath(folder), ec))
 		return;
-	std::filesystem::create_directories(pathFromUtf8(folder), ec);
+	std::filesystem::create_directories(nativePath(folder), ec);
 	if(ec)
 		throw Error("could not create deepzoom folder " + folder);
 }
