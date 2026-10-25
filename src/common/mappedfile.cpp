@@ -163,7 +163,7 @@ void MappedFile::createTemporary(const std::string &prefix) {
 		const auto native = fsPath.c_str();
 #ifdef _WIN32
 		//deleted by the system when the last handle closes, even if the process is killed
-		HANDLE handle = CreateFileW(native, GENERIC_READ | GENERIC_WRITE,
+		HANDLE handle = CreateFileW(native, GENERIC_READ | GENERIC_WRITE | DELETE,
 		                            FILE_SHARE_READ | FILE_SHARE_WRITE | FILE_SHARE_DELETE, nullptr,
 		                            CREATE_NEW, FILE_ATTRIBUTE_NORMAL | FILE_FLAG_DELETE_ON_CLOSE,
 		                            nullptr);
