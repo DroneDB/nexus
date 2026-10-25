@@ -1,27 +1,38 @@
 #include "stlloader.h"
 
+#include <algorithm>
+#include <cstdio>
+#include <cstring>
+
+#include "../common/error.h"
+#include "../common/textparse.h"
+
 #include <iostream>
 using namespace std;
 
-STLLoader::STLLoader(QString filename) {
+STLLoader::STLLoader(const std::string &filename) {
 
 	has_colors = has_normals = has_textures = false;
 
-	file.setFileName(filename);
-	if(!file.open(QIODevice::ReadOnly))
-		throw QString("could not open file " + filename);
+	if(!file.open(filename))
+		throw nx::Error("could not open file " + filename);
 
-	QByteArray header = file.peek(5);
-	if(header.size() != 5)
-		throw QString("Unexpected end of file");
-	ascii = header.startsWith("solid");
+	char header[80];
+	if(file.read(header, 5) != 5)
+		throw nx::Error("Unexpected end of file");
+	file.seek(0);
+	ascii = std::memcmp(header, "solid", 5) == 0;
 	if(ascii) {
-		file.readLine();
+		const char *line;
+		size_t length;
+		file.readLine(line, length);
 		n_triangles = 0;
 		return;
 	}
-	header = file.read(80); //ignored
-	file.read((char *)&n_triangles, 4); //TODO support little endian in big-endiam systems
+	file.read(header, 80); //ignored
+	uint32_t count = 0;
+	file.read(&count, 4); //TODO support little endian in big-endiam systems
+	n_triangles = count;
 
 }
 
@@ -35,18 +46,19 @@ facet normal nx ny nz
 	endloop
 endfacet */
 
-quint32 STLLoader::getTrianglesAscii(quint32 size, Triangle *buffer) {
-	quint32 readed = 0;
-	char line[1024];
+uint32_t STLLoader::getTrianglesAscii(uint32_t size, Triangle *buffer) {
+	uint32_t readed = 0;
+	const char *line;
+	size_t length;
 	char dummy[1024];
 	
-	for(int i = 0; i < size; i++) {
+	for(uint32_t i = 0; i < size; i++) {
 
-		qint64 ok = file.readLine(line, 1023); //facet
-		if(ok <= 0) return readed;
+		bool ok = file.readLine(line, length); //facet
+		if(!ok) return readed;
 
-		ok = file.readLine(line, 1023); //normal
-		if(ok <= 0) return readed;
+		ok = file.readLine(line, length); //normal
+		if(!ok) return readed;
 
 
 		Triangle &tri = buffer[i];
@@ -54,13 +66,13 @@ quint32 STLLoader::getTrianglesAscii(quint32 size, Triangle *buffer) {
 
 		for(int k = 0; k < 3; k++) {
 			float *v = tri.vertices[k].v;
-			ok = file.readLine(line, 1023); //normal
-			if(ok <= 0) return readed;
+			ok = file.readLine(line, length); //normal
+			if(!ok) return readed;
 
 			vcg::Point3d d;
-			int n = sscanf(line, "%s %lf %lf %lf", dummy, &d[0], &d[1], &d[2]);
+			int n = sscanf(line, "%1023s %lf %lf %lf", dummy, &d[0], &d[1], &d[2]);
 			if(n != 4)
-				throw QString("Invalid STL file");
+				throw nx::Error("Invalid STL file");
 			d -= origin;
 			d[0] *= scale[0];
 			d[1] *= scale[1];
@@ -74,19 +86,19 @@ quint32 STLLoader::getTrianglesAscii(quint32 size, Triangle *buffer) {
 		current_triangle++;
 		readed++;
 
-		ok = file.readLine(line, 1023); //endloop
-		if(ok <= 0) return readed;
+		ok = file.readLine(line, length); //endloop
+		if(!ok) return readed;
 
-		ok = file.readLine(line, 1023); //endfacet
-		if(ok <= 0) return readed;
+		ok = file.readLine(line, length); //endfacet
+		if(!ok) return readed;
 	}
 	return readed;
 }
 
-quint32 STLLoader::getTrianglesBinary(quint32 size, Triangle *buffer) {
+uint32_t STLLoader::getTrianglesBinary(uint32_t size, Triangle *buffer) {
 	//each face is normal (float), + 3 vertices(float) + uint16  = 50 bytes.
 	vector<char> tmp(50*size);
-	qint64 nread = file.read(tmp.data(), 50*size);
+	int64_t nread = file.read(tmp.data(), 50*size);
 
 	nread /= 50;
 	if(nread <= 0) return 0;
@@ -108,6 +120,6 @@ quint32 STLLoader::getTrianglesBinary(quint32 size, Triangle *buffer) {
 	return nread;
 }
 
-quint32 STLLoader::getVertices(quint32 /*size*/, Splat */*vertex*/) {
-	throw QString("Unimplemented!");
+uint32_t STLLoader::getVertices(uint32_t /*size*/, Splat */*vertex*/) {
+	throw nx::Error("Unimplemented!");
 }

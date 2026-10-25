@@ -54,7 +54,7 @@ public:
 	MeshDecoder(nx::Node &_node, nx::NodeData &_data, nx::Patch *_patches, nx::Signature &_sig):
 		node(_node), data(_data), patches(_patches), sig(_sig), vertex_count(0) {}
 
-	void decode(int len, uchar *input);
+	void decode(int len, unsigned char *input);
 
 private:
 
@@ -84,7 +84,7 @@ private:
 	void computeNormals(vcg::Point3s *estimated_normals);
 	void markBoundary();
 
-	int decodeDiff(uchar diff, BitStream &stream);
+	int decodeDiff(unsigned char diff, BitStream &stream);
 	//we assume integer computations and float computations are equivalent for numbers < 1<<23
 	int decodeVertex(const vcg::Point3i &predicted, const vcg::Point2i &texpredicted, BitStream &bitstream, int diff, int tdiff);
 

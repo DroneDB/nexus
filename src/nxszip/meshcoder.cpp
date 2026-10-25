@@ -16,8 +16,6 @@ GNU General Public License (http://www.gnu.org/licenses/gpl.txt)
 for more details.
 */
 #include <deque>
-#include <QTime>
-#include <QTextStream>
 #include "meshcoder.h"
 
 using namespace nx;
@@ -180,7 +178,7 @@ void MeshEncoder::encodeCoordinates() {
 
 	assert(!sig.face.hasIndex());
 
-	vector<uchar> diffs;
+	vector<unsigned char> diffs;
 	BitStream bitstream(node.nvert/2);
 
 	bitstream.write(zpoints[0].bits, coord_bits*3);
@@ -188,7 +186,7 @@ void MeshEncoder::encodeCoordinates() {
 	for(size_t pos = 1; pos < zpoints.size(); pos++) {
 		ZPoint &p = zpoints[pos-1]; //previous point
 		ZPoint &q = zpoints[pos]; //current point
-		uchar d = p.difference(q);
+		unsigned char d = p.difference(q);
 		diffs.push_back(d);
 		//we can get away with d diff bits (should be d+1) because the first bit will always be 1 (sorted q> p)
 		bitstream.write(q.bits, d); //rmember to add a 1, since
@@ -247,7 +245,7 @@ void MeshEncoder::encodeFaces() {
 	//	encodeFaces(0, node.nface);
 	for(uint32_t p = node.first_patch; p < node.last_patch(); p++) {
 		Patch &patch = patches[p];
-		uint end = patch.triangle_offset;
+		unsigned int end = patch.triangle_offset;
 		encodeFaces(start, end);
 		start = end;
 	}
@@ -257,8 +255,8 @@ void MeshEncoder::encodeNormals() {
 
 	int side = 1<<(16 - norm_q);
 
-	vector<uchar> diffs;
-	vector<uchar> signs;
+	vector<unsigned char> diffs;
+	vector<unsigned char> signs;
 	BitStream bitstream(node.nvert/64);
 
 	Point3s *normals = data.normals(sig, node.nvert);
@@ -419,7 +417,7 @@ void MeshEncoder::encodeColors() {
 	vector<Color4b> colors;
 
 	BitStream bitstream(node.nvert/2);
-	vector<uchar> diffs[4];
+	vector<unsigned char> diffs[4];
 
 
 	int steps[4];
@@ -539,9 +537,9 @@ void MeshEncoder::encodeFaces(int start, int end) {
 
 	buildTopology(faces);
 
-	vector<uchar> clers;
-	vector<uchar> diffs;
-	vector<uchar> tdiffs;
+	vector<unsigned char> clers;
+	vector<unsigned char> diffs;
+	vector<unsigned char> tdiffs;
 	BitStream bitstream(2*faces.size());
 
 	unsigned int current = 0;          //keep track of connected component start
@@ -716,18 +714,6 @@ void MeshEncoder::encodeFaces(int start, int end) {
 
 	for(int i: freq)
 		cout << "I: " << 100.0*i/clers.size() << endl;
-
-	//save obj
-	QFile file("test.obj");
-	file.open(QFile::WriteOnly);
-	QTextStream tstream(&file);
-	for(Point3i p: qpoints)
-		tstream << "v " << p[0] << " " << p[1] << " " << p[2] << "\n";
-
-	for(int i = 0; i < test_faces.size(); i += 3) {
-		int *f = &test_faces[i];
-		tstream << "f " << (f[0]+1) << " " << (f[1] +1) << " " << (f[2]+1) << "\n";
-	}
 */
 
 
@@ -780,7 +766,7 @@ int needed(int v) {
 }
 
 void MeshEncoder::encodeVertex(int target, const Point3i &predicted, const Point2i &texpredicted, BitStream &bitstream,
-							   std::vector<::uchar> &diffs, std::vector<::uchar> &tdiffs) {
+							   std::vector<unsigned char> &diffs, std::vector<unsigned char> &tdiffs) {
 
 
 	static int count = 0;
@@ -852,7 +838,7 @@ void MeshEncoder::encodeVertex(int target, const Point3i &predicted, const Point
 }
 
 //val cam be zero.
-void MeshEncoder::encodeDiff(vector<::uchar> &diffs, BitStream &stream, int val) {
+void MeshEncoder::encodeDiff(vector<unsigned char> &diffs, BitStream &stream, int val) {
 	val = Tunstall::toUint(val)+1;
 	int ret = ilog2(val);
 	diffs.push_back(ret);

@@ -18,17 +18,16 @@ for more details.
 #ifndef NX_NEXUSBUILDER_H
 #define NX_NEXUSBUILDER_H
 
+#include <string>
 #include <vector>
-#include <atomic>
 
-#include <QString>
-#include <QFile>
-#include <QMutex>
+#include <QTemporaryFile>
 
 #include <vcg/space/box3.h>
 
 #include "../common/signature.h"
 #include "../common/dag.h"
+#include "../common/textfile.h"
 #include "../common/virtualarray.h"
 #include "texpyramid.h"
 
@@ -84,7 +83,7 @@ public:
 	// (chunks and the per-node texture file) are created. An absolute path keeps
 	// the (possibly multi-GB) scratch on the same volume as the output and lets it
 	// be cleaned up as a unit. When empty, historical defaults are used.
-	NexusBuilder(quint32 components, const QString &cacheDir = QString());
+	NexusBuilder(uint32_t components, const std::string &cacheDir = std::string());
 	NexusBuilder(nx::Signature &sig);
 
 	bool hasNormals() { return header.signature.vertex.hasNormals(); }
@@ -93,13 +92,13 @@ public:
 
 	void initAtlas(std::vector<QImage>& textures);
 	bool initAtlas(std::vector<LoadTexture>& textures);
-	void create(KDTree *input, Stream *output, uint top_node_size);
+	void create(KDTree *input, Stream *output, unsigned int top_node_size);
 	void createLevel(KDTree *input, Stream *output, int level);
 	void createCloudLevel(KDTreeCloud *input, StreamCloud *output, int level);
 	void createMeshLevel(KDTreeSoup *input, StreamSoup *output, int level);
 
 
-	void setMaxMemory(quint64 m) {
+	void setMaxMemory(uint64_t m) {
 		max_memory = m;
 		chunks.setMaxMemory(m);
 		atlas.cache_max = m;
@@ -109,20 +108,9 @@ public:
 	void saturate();
 
 	void reverseDag();
-	void save(QString filename);
+	void save(const std::string &filename);
 
-	QMutex m_input;     //locks input stream when building nodes multithread
-	QMutex m_output;    //locks output stream stream when building nodes multithread
-	QMutex m_builder;   //locks builders data (patches, etc.)
-	QMutex m_chunks;    //locks builder chunks (the cache)
-	QMutex m_texsimply; //locks the temporary data simplification structure for texture. (UGH)
-	QMutex m_textures;  //locks texture temporary file
-
-	// Graceful exits from the thread pool
-	std::atomic<bool> abort_requested{false};
-	QString abort_message;
-
-	QFile file;
+	nx::OutputFile file;
 
 	VirtualChunks chunks;
 	std::vector<NodeBox> boxes; //a box for each node
@@ -131,13 +119,12 @@ public:
 	std::vector<nx::Node> nodes;
 	std::vector<nx::Patch> patches;
 	std::vector<nx::Texture> textures;
-	std::vector<QString> images;
+	std::vector<std::string> images; //UTF-8 names of the original textures, for !useNodeTex
 
-	quint64 input_pixels, output_pixels;
+	uint64_t input_pixels, output_pixels;
 	nx::TexAtlas atlas;
 	QTemporaryFile nodeTex; //texure images for each node stored here.
-	quint64 max_memory;
-	int n_threads = 4;
+	uint64_t max_memory;
 
 	float scaling;
 	bool useNodeTex; //use node textures
@@ -149,12 +136,12 @@ public:
 	//if too many texel per edge, simplification is inhibited, but don't quit prematurely
 	int skipSimplifyLevels = 0;
 
-	void processBlock(KDTreeSoup *input, StreamSoup *output, uint block, int level);
+	void processBlock(KDTreeSoup *input, StreamSoup *output, unsigned int block, int level);
 
 	QImage extractNodeTex(TMesh &mesh, int level, float &error, float &pixelXedge);
 	void invertNodes(); //
-	void saturateNode(quint32 n);
-	void optimizeNode(quint32 node, uchar *chunk);
+	void saturateNode(uint32_t n);
+	void optimizeNode(uint32_t node, unsigned char *chunk);
 	void uniformNormals();
 	void appendBorderVertices(uint32_t origin, uint32_t destination, std::vector<NVertex> &vertices);
 

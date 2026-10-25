@@ -19,17 +19,18 @@ for more details.
 #define NX_TSPLOADER_H
 
 #include "meshloader.h"
+#include "../common/textfile.h"
 
 class TspLoader: public MeshLoader {
 public:
-	TspLoader(QString file);
-	void setMaxMemory(quint64 /*m*/) {  }
-	quint32 getTriangles(quint32 size, Triangle *buffer);
-	quint32 getVertices(quint32 /*size*/, Splat */*vertex*/) { assert(0); return 0; }
+	TspLoader(const std::string &file);
+	void setMaxMemory(uint64_t /*m*/) {  }
+	uint32_t getTriangles(uint32_t size, Triangle *buffer);
+	uint32_t getVertices(uint32_t /*size*/, Splat */*vertex*/) { assert(0); return 0; }
 
 private:
-	QFile file;
-	quint64 current_triangle;
+	nx::InputFile file;
+	uint64_t current_triangle = 0;
 
 };
 

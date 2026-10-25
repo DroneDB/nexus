@@ -26,7 +26,7 @@ using namespace vcg;
 using namespace nx;
 using namespace meco;
 
-void MeshDecoder::decode(int len, ::uchar *input) {
+void MeshDecoder::decode(int len, unsigned char *input) {
 	FpuPrecision::store();
 	FpuPrecision::setFloat();
 
@@ -85,7 +85,7 @@ void MeshDecoder::decodeCoordinates() {
 	BitStream bitstream;
 	stream.read(bitstream);
 
-	std::vector<uchar> diffs;
+	std::vector<unsigned char> diffs;
 	Tunstall tunstall;
 	tunstall.decompress(stream, diffs);
 
@@ -96,7 +96,7 @@ void MeshDecoder::decodeCoordinates() {
 	for(size_t i = 1; i < zpoints.size(); i++) {
 		ZPoint &p = zpoints[i];
 		p = zpoints[i-1];
-		uchar d = diffs[i-1];
+		unsigned char d = diffs[i-1];
 		p.setBit(d, 1);
 		uint64_t e = 0; //1<<d;
 		bitstream.read(d, e);
@@ -139,11 +139,11 @@ void MeshDecoder::decodeNormals() {
 	Point3s *norms = data.normals(sig, node.nvert);
 	norm_q = stream.read<char>();
 
-	std::vector<uchar> diffs;
+	std::vector<unsigned char> diffs;
 	Tunstall tunstall;
 	tunstall.decompress(stream, diffs);
 
-	std::vector<uchar> signs;
+	std::vector<unsigned char> signs;
 	Tunstall tunstall1;
 	tunstall1.decompress(stream, signs);
 
@@ -299,7 +299,7 @@ void MeshDecoder::decodeColors() {
 	for(int k = 0; k < 4; k++)
 		color_q[k] = stream.read<char>();
 
-	std::vector<uchar> diffs[4];
+	std::vector<unsigned char> diffs[4];
 	for(int k = 0; k < 4; k++) {
 		Tunstall tunstall;
 		tunstall.decompress(stream, diffs[k]);
@@ -367,9 +367,9 @@ void MeshDecoder::decodeFaces(int nface, uint16_t *faces) {
 	Point3i *coords = (Point3i *)data.coords();
 	Point2i *texcoords = (Point2i *)data.texCoords(sig, node.nvert);
 
-	vector<uchar> clers;
-	vector<uchar> diffs;
-	vector<uchar> tdiffs;
+	vector<unsigned char> clers;
+	vector<unsigned char> diffs;
+	vector<unsigned char> tdiffs;
 	BitStream bitstream;
 
 	Tunstall tunstall;
@@ -564,7 +564,7 @@ int MeshDecoder::decodeVertex(const Point3i &predicted, const Point2i &texpredic
 	return v;
 }
 
-int MeshDecoder::decodeDiff(::uchar diff, BitStream &stream) {
+int MeshDecoder::decodeDiff(unsigned char diff, BitStream &stream) {
 	if(diff == 0)
 		return 0;
 

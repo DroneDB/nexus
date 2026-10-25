@@ -16,32 +16,57 @@ GNU General Public License (http://www.gnu.org/licenses/gpl.txt)
 for more details.
 */
 #include "objloader.h"
-#include <QFileInfo>
-#include <QDir>
-#include <QTextStream>
-#include <QRegularExpression>
+
+#include <algorithm>
+#include <cstring>
 #include <iostream>
 
+#include "../common/error.h"
+#include "../common/pathutil.h"
+#include "../common/textparse.h"
 
+using namespace nx;
 
 #define RED(c) (c >> 24) 
 #define GREEN(c) ((c >> 16) & 0xff)
 #define BLUE(c) ((c >> 8) & 0xff)
 #define ALPHA(c) (c & 0xff)
 
+namespace {
 
-ObjLoader::ObjLoader(QString filename, QString _mtl):
+//a line of the file for an error message
+std::string excerpt(const char *line) {
+	const size_t max = 200;
+	std::string text(line, std::min(std::strlen(line), max));
+	if(std::strlen(line) > max)
+		text += "...";
+	return text;
+}
+
+bool endsToken(char c) {
+	return c == '\0' || text::isSpace(c) || c == '#';
+}
+
+//255 times a value of the material, in 0..255
+uint32_t channel(float value) {
+	const float scaled = 255.0f * value;
+	return scaled <= 0.0f ? 0u : scaled >= 255.0f ? 255u : uint32_t(scaled);
+}
+
+}
+
+ObjLoader::ObjLoader(const std::string &filename, const std::string &_mtl):
+	filename(filename),
+	mtl(_mtl),
 	vertices("cache_plyvertex"),
 	n_vertices(0),
 	n_triangles(0),
 	current_vertex(0) {
 
-	mtl =_mtl;
-	file.setFileName(filename);
-	if(!file.open(QFile::ReadOnly))
-		throw QString("could not open file %1. Error: %2").arg(filename).arg(file.errorString());
+	if(!file.open(filename))
+		throw Error("could not open file " + filename);
 
-	readMTL(file);
+	readMTL();
 }
 
 ObjLoader::~ObjLoader() {
@@ -49,191 +74,144 @@ ObjLoader::~ObjLoader() {
 }
 
 
-
+//reads the texture coordinates (and counts the normals, which nothing reads but which a
+//face may refer to)
 void ObjLoader::cacheTextureUV() {
 
 	vtxtuv.reserve(n_vertices * 2);
 
-	char buffer[1024];
 	file.seek(0);
-	int nidx = 0;
-	int cnt = 0;
-	while (1) {
-		
-		int s = file.readLine(buffer, 1024);
-		if (s == -1) {                     //end of file
-			break;
-		}
-		if (s == 0) continue;            //skip empty lines
-		if (buffer[0] != 'v' || buffer[1] != 't')            //skip all irrelevant staff
+	const char *line;
+	size_t length;
+	while (file.readLine(line, length)) {
+		if (line[0] != 'v')            //skip all irrelevant staff
 			continue;
-		buffer[s] = '\0';               //terminating line, readLine wont do this.
 
-
-		if (buffer[2] == ' ') {      //skip other properties
-
+		if (line[1] == 't' && text::isSpace(line[2])) {      //skip other properties
 			float vt0 = 0.0, vt1 = 0.0;
-			int n = sscanf(buffer, "vt %f %f", &vt0, &vt1);
-			if (n != 2) throw QString("error parsing vtxt  line: %1").arg(buffer);
-			cnt++;
+			const char *p = line + 3;
+			if (!text::parseFloat(p, vt0) || !text::parseFloat(p, vt1))
+				throw Error("error parsing vtxt  line: " + excerpt(line));
 			vtxtuv.push_back(vt0);
 			vtxtuv.push_back(vt1);
-
-
 		}//skipping other properties in OBJ
 	}
 }
 
-void ObjLoader::readMTL(QFile &file) {
-	
+void ObjLoader::readMTL() {
 
-	char buffer[1024];
-	
-	if (!mtl.isNull()) {
-		if(!QFileInfo::exists(mtl))
-			throw QString("Could not find .mtl file: %1").arg(mtl);
+	const char *line;
+	size_t length;
+
+	if (!mtl.empty()) {
+		if(!pathExists(mtl))
+			throw Error("Could not find .mtl file: " + mtl);
 	}
 
-	if(mtl.isNull()) { //look for mtllib
-		while (1) {
-			if(file.readLine(buffer, 1000) == -1)
-				break;
-			if(strncmp(buffer, "mtllib", 6) != 0)
+	if(mtl.empty()) { //look for mtllib
+		while (file.readLine(line, length)) {
+			if(strncmp(line, "mtllib", 6) != 0)
 				continue;
 
-			QString m = QString(buffer).mid(7).trimmed();
-			m = QFileInfo(file.fileName()).dir().filePath(m);
-			if (QFileInfo::exists(m))
+			std::string m = text::trimmed(length > 7 ? std::string(line + 7) : std::string());
+			m = joinPath(parentPath(filename), m);
+			if (pathExists(m))
 				mtl = m;
 			break;
 		}
 	}
-	if(mtl.isNull()) { //assume the name is the same
-		QString fname = file.fileName();
-		QFileInfo info = QFileInfo(fname);
-		mtl = info.path() + "/" + info.completeBaseName() + ".mtl";
+	if(mtl.empty()) { //assume the name is the same
+		mtl = joinPath(parentPath(filename), completeBaseName(filename) + ".mtl");
 	}
-		
-	if (!QFileInfo::exists(mtl))
+
+	if (!pathExists(mtl))
 		return;
 
-	QFile f(mtl);
-	if (!f.open(QFile::ReadOnly))
+	InputFile f;
+	if (!f.open(mtl))
 		return;
+
+	//the material being read; it is complete when the next one starts or the file ends
+	struct Material {
+		bool started = false;
+		std::string tag;
+		std::string texture;
+		uint32_t R = 0xff000000, G = 0x00ff0000, B = 0x0000ff00, A = 255;
+	} material;
 	int cnt = 0;
-	int head_linewas_read = false;
-	while (1) {
-		int s = 0;
-		if (!head_linewas_read) {
-			
-			s = f.readLine(buffer, 1024);
-			if (s == -1) {                     //end of file
 
-				break;
-			}
-			if (s == 0) continue;            //skip empty lines
-			if (buffer[0] == '#')            //skip comments
-				continue;
-			buffer[s] = '\0';
-		}
-		else {
-			head_linewas_read = false;
-		}
-		
-		QString str(buffer);
-		str = str.simplified();
-		if (str.startsWith("newmtl", Qt::CaseInsensitive)){
-			QString mtltag = str.section(" ", 1);
-			QString txtfname;
-			qint32 R = 0xff000000;
-			qint32 G = 0x00ff0000;
-			qint32 B = 0x0000ff00;
-			qint32 A = 255;
+	auto finish = [&]() {
+		if (!material.started)
+			return;
+		colors_map[material.tag] = material.R + material.G + material.B + material.A;
 
-			do {
-				s = f.readLine(buffer, 1024);
-				if (s == -1) break;
-				buffer[s] = '\0';
-				QString str(buffer);
-				str = str.simplified();
-				
-				if (str.startsWith("newmtl", Qt::CaseInsensitive)){
-					head_linewas_read = true;
+		std::string txtfname = material.texture;
+		if (txtfname.length() > 0) {
+			sanitizeTextureFilepath(txtfname);
+			//a texture name is relative to the .mtl that names it; when the .mtl is in
+			//another folder and the name is not found next to it, the .obj's folder is
+			//still tried, which is where every name was looked up before.
+			std::string nextToMtl = joinPath(parentPath(mtl), txtfname);
+			if (pathExists(nextToMtl))
+				txtfname = nextToMtl;
+			else
+				resolveTextureFilepath(filename, txtfname);
+
+			textures_map[material.tag] = txtfname;
+			bool exists = false;
+			for (const auto &fn : texture_filenames)
+				if (fn.filename == txtfname) {
+					exists = true;
 					break;
 				}
-				if (str.startsWith("d", Qt::CaseInsensitive)){
-
-					float d = 1.0;
-					int n = sscanf(buffer, "d %f", &d);
-					if(n == 1)
-						A = 255 * d;
-					continue;
-				}
-				if(str.startsWith("Tr", Qt::CaseInsensitive)){
-					float tr = 0.0;
-					int n = sscanf(buffer, "d %f", &tr);
-					if (n == 1)
-						A = 255 * (1.0f - tr);
-					continue;
-				}
-				if(str.startsWith("Map_Kd", Qt::CaseInsensitive)){
-					txtfname = str.mid(7).trimmed();
-					txtfname = txtfname.remove(QRegularExpression("^(\")")); 
-					txtfname = txtfname.remove(QRegularExpression("(\")$"));
-					continue;
-				}
-				if(str.startsWith("Kd", Qt::CaseInsensitive)){
-					float r, g, b;
-					QString data_string(buffer);
-					data_string = data_string.simplified();
-					QTextStream data_stream(&data_string);
-					QString kd;
-					data_stream >> kd >>r >> g >> b;
-					int n = 3;
-					//cout << qPrintable(data_string);
-					//cout << (const char*)(data_string.simplified().constData());
-					if (n == 3) {
-						R = ((qint32(255 * r)) << 24) & 0xff000000;
-						G = ((qint32(255 * g)) << 16) & 0x00ff0000;
-						B = ((qint32(255 * b)) << 8) & 0x0000ff00;
-					}
-					continue;
-				}
-
-			} while (true);
-
-			qint32 color = R + G + B + A;
-			colors_map.insert(mtltag, color);
-
-			if (txtfname.length() > 0) {
-				sanitizeTextureFilepath(txtfname);
-				//a texture name is relative to the .mtl that names it; when the .mtl is in
-				//another folder and the name is not found next to it, the .obj's folder is
-				//still tried, which is where every name was looked up before.
-				QString nextToMtl = QFileInfo(mtl).dir().filePath(txtfname);
-				if (QFileInfo::exists(nextToMtl))
-					txtfname = nextToMtl;
-				else
-					resolveTextureFilepath(file.fileName(), txtfname);
-				
-				textures_map.insert(mtltag, txtfname);
-				bool exists = false;
-				for (auto fn : texture_filenames)
-					if (fn.filename == txtfname) {
-						exists = true;
-						break;
-					}
-				if (!exists) {
-					texture_filenames.push_back(LoadTexture(txtfname));
-				}
+			if (!exists) {
+				texture_filenames.push_back(LoadTexture(txtfname));
 			}
-			//std::cout << buffer;// << endl;
-			cnt++;
+		}
+		cnt++;
+		material = Material();
+	};
+
+	while (f.readLine(line, length)) {
+		if (line[0] == '#')            //skip comments
+			continue;
+
+		const std::string str = text::simplified(line, length);
+		const std::string word = text::firstWord(str);
+
+		if (text::equalsNoCase(word, "newmtl")) {
+			finish();
+			material.started = true;
+			material.tag = text::afterFirstWord(str);
+			continue;
+		}
+		if (!material.started)
+			continue;
+
+		const char *args = str.c_str() + std::min(word.size() + 1, str.size());
+		if (word == "d") {
+			float d;
+			if (text::parseFloat(args, d))
+				material.A = channel(d);
+		} else if (text::equalsNoCase(word, "map_kd")) {
+			//the name, without the quotes some exporters put around it
+			std::string name = text::trimmed(text::afterFirstWord(str));
+			if (!name.empty() && name.front() == '"')
+				name.erase(0, 1);
+			if (!name.empty() && name.back() == '"')
+				name.pop_back();
+			material.texture = name;
+		} else if (text::equalsNoCase(word, "kd")) {
+			float r, g, b;
+			if (text::parseFloat(args, r) && text::parseFloat(args, g) && text::parseFloat(args, b)) {
+				material.R = channel(r) << 24;
+				material.G = channel(g) << 16;
+				material.B = channel(b) << 8;
+			}
 		}
 	}
-	//std::cout << "Colors read: " << cnt << std::endl;
-	//for (auto tex : texture_filenames)
-		//std::cout << qPrintable("Texture: " + tex.filename) << std::endl;
+	finish();
+
 	if (texture_filenames.size() > 0)
 		has_textures = true;
 	if (cnt)
@@ -243,299 +221,205 @@ void ObjLoader::readMTL(QFile &file) {
 void ObjLoader::cacheVertices() {
 	vertices.setElementsPerBlock(1<<20);
 	file.seek(0);
-	char buffer[1024];
-	int cnt = 0;
-	
-	while(1) {
-		
-		int s = file.readLine(buffer, 1024);
-		if (s == -1) {                     //end of file
-			//std::cout << "Vertices read: " << cnt << std::endl;
-			break;
+	const char *line;
+	size_t length;
 
-		}
-		if(s == 0) continue;            //skip empty lines
-		buffer[s] = '\0';               //terminating line, readLine wont do this.
-
-		if(buffer[0] == 'v') {          //vertex
-			if(buffer[1] == ' ') {      //skip other properties
-
-				vertices.resize(n_vertices+1);
-				Vertex &vertex = vertices[n_vertices];
-				n_vertices++;
-
-				vcg::Point3d p;
-				int n = sscanf(buffer, "v %lf %lf %lf", &p[0], &p[1], &p[2]);
-				if(n != 3) throw QString("error parsing vertex line %1 while caching").arg(buffer);
-				p -= origin;
-				p[0] *= scale[0];
-				p[1] *= scale[1];
-				p[2] *= scale[2];
-				box.Add(p);
-				
-				vertex.v[0] = (float)p[0];
-				vertex.v[1] = (float)p[1];
-				vertex.v[2] = (float)p[2];
-
-				cnt++;
-				if(quantization) {
-					quantize(vertex.v[0]);
-					quantize(vertex.v[1]);
-					quantize(vertex.v[2]);
-				}
-
-
-			}//skipping other properties in OBJ
+	while(file.readLine(line, length)) {
+		if(line[0] != 'v')
 			continue;
 
-		} else if(buffer[0] == 'm' && strncmp(buffer, "mtllib", 6) == 0) {
-			if(!mtl.isNull()) {
-				QString fname = file.fileName();
-				QFileInfo info = QFileInfo(fname);
+		if(line[1] == 'n' && text::isSpace(line[2])) {
+			n_normals++;
+			continue;
+		}
+		if(!text::isSpace(line[1]))      //skip other properties
+			continue;
 
-				mtl = QString(buffer).mid(7).trimmed();
-				mtl = mtl.remove(QRegularExpression("^(\")")); 
-				mtl = mtl.remove(QRegularExpression("(\")$"));
-				mtl = info.dir().filePath(mtl);
-			}
+		vertices.resize(n_vertices+1);
+		Vertex &vertex = vertices[n_vertices];
+		n_vertices++;
+
+		vcg::Point3d p;
+		const char *s = line + 2;
+		if(!text::parseDouble(s, p[0]) || !text::parseDouble(s, p[1]) || !text::parseDouble(s, p[2]))
+			throw Error("error parsing vertex line " + excerpt(line) + " while caching");
+		p -= origin;
+		p[0] *= scale[0];
+		p[1] *= scale[1];
+		p[2] *= scale[2];
+		box.Add(p);
+
+		vertex.v[0] = (float)p[0];
+		vertex.v[1] = (float)p[1];
+		vertex.v[2] = (float)p[2];
+
+		if(quantization) {
+			quantize(vertex.v[0]);
+			quantize(vertex.v[1]);
+			quantize(vertex.v[2]);
 		}
 	}
 }
 
-void ObjLoader::setMaxMemory(quint64 max_memory) {
+void ObjLoader::setMaxMemory(uint64_t max_memory) {
 	vertices.setMaxMemory(max_memory);
 }
 
+//An index of a face: 1 is the first element of the file, -1 the last one defined before the
+//face. Returns it zero based.
+int64_t ObjLoader::resolveIndex(int64_t index, uint64_t seen, uint64_t total, const char *what, const char *line) {
+	int64_t resolved = -1;
+	if(index > 0)
+		resolved = index - 1;
+	else if(index < 0)
+		resolved = int64_t(seen) + index;
+	if(index == 0 || resolved < 0 || uint64_t(resolved) >= total)
+		throw Error(std::string("could not parse face: ") + what + " index " + std::to_string(index) +
+		            " does not refer to an element of the file (it defines " + std::to_string(total) +
+		            "): " + excerpt(line));
+	return resolved;
+}
+
+void ObjLoader::parseFace(const char *line) {
+	corners.clear();
+	const char *p = line + 1; //'f'
+	while(true) {
+		p = text::skipSpaces(p);
+		if(endsToken(*p))
+			break;
+
+		//v, v/vt, v/vt/vn or v//vn
+		int64_t values[3] = {0, 0, 0};
+		bool present[3] = {false, false, false};
+		for(int k = 0; k < 3; k++) {
+			if(k > 0) {
+				if(*p != '/')
+					break;
+				p++;
+			}
+			if(endsToken(*p) || *p == '/') {
+				if(k == 0)
+					throw Error("could not parse face: " + excerpt(line));
+				continue; //an empty texture coordinate or normal
+			}
+			if(!text::parseInteger(p, values[k]))
+				throw Error("could not parse face: " + excerpt(line));
+			present[k] = true;
+		}
+		if(!endsToken(*p)) //more than three indices, or something else after them
+			throw Error("could not parse face: " + excerpt(line));
+
+		Corner c;
+		c.vertex = resolveIndex(values[0], seen_vertices, n_vertices, "vertex", line);
+		c.uv = present[1] ? resolveIndex(values[1], seen_uvs, vtxtuv.size() / 2, "texture coordinate", line) : -1;
+		c.normal = present[2] ? resolveIndex(values[2], seen_normals, n_normals, "normal", line) : -1;
+		corners.push_back(c);
+	}
+	if(corners.size() < 3)
+		throw Error("could not parse face: " + excerpt(line));
+}
 
 
+uint32_t ObjLoader::getTriangles(uint32_t size, Triangle *faces) {
 
-
-
-
-quint32 ObjLoader::getTriangles(quint32 size, Triangle *faces) {
-
-	if (n_triangles == 0) {
+	if (!cached) {
 		cacheVertices();
 		cacheTextureUV();
+		cached = true;
 	}
 
-	char buffer[1024];
 	file.seek(current_tri_pos);
 
-	qint32 R = (0x7f << 24);
-	qint32 G = (0x7f << 16);
-	qint32 B = (0x7f << 8);
+	uint32_t R = (0x7fu << 24);
+	uint32_t G = (0x7fu << 16);
+	uint32_t B = (0x7fu << 8);
 
-	qint32 A = 255;
-	quint32 default_color = R + G + B + A;
+	uint32_t A = 255;
+	uint32_t default_color = R + G + B + A;
 	
-	quint32 count = 0;
-	qint64 cpos = current_tri_pos;
+	uint32_t count = 0;
+	uint64_t cpos = current_tri_pos;
+	const char *line;
+	size_t length;
 
 	while (count < size) {
 		cpos = file.pos();
-		int s = file.readLine(buffer, 1024);
-		if (s == -1) {                     //end of file
+		if (!file.readLine(line, length)) {                     //end of file
 			cpos = file.pos();
 			break;
 		}
 
-		if (has_colors && buffer[0] == 'u') {
-			QString str = QString(buffer).simplified().section(" ", 1);
-			current_color = colors_map[str];
-			if (current_color) {
-				//cout << "cur color " << buffer+7 << " " << RED(current_color) <<" "<< GREEN(current_color) << " " << BLUE(current_color) << " " << endl;
-			}
-			else {
+		if (line[0] == 'v') {
+			if (text::isSpace(line[1]))
+				seen_vertices++;
+			else if (line[1] == 't' && text::isSpace(line[2]))
+				seen_uvs++;
+			else if (line[1] == 'n' && text::isSpace(line[2]))
+				seen_normals++;
+			continue;
+		}
+
+		if (has_colors && text::startsWithWord(line, "usemtl")) {
+			const std::string str = text::afterFirstWord(text::simplified(line, length));
+			auto color = colors_map.find(str);
+			current_color = color == colors_map.end() ? 0 : color->second;
+			if (!current_color)
 				current_color = default_color;
-			}
 
 			current_texture_id = -1;
-			QString txtfname = textures_map[str];
-			if (txtfname.length() > 0) {
-				for (int i = 0; i < texture_filenames.size(); i++) {
-					if (texture_filenames[i].filename == txtfname)
-						current_texture_id = i;
+			auto texture = textures_map.find(str);
+			if (texture != textures_map.end() && texture->second.length() > 0) {
+				for (size_t i = 0; i < texture_filenames.size(); i++) {
+					if (texture_filenames[i].filename == texture->second)
+						current_texture_id = int32_t(i);
 				}
-			}
-			
-			if (current_texture_id > -1) {
-				//cout << "txt ok: " << qPrintable(str) << " " << qPrintable(txtfname) << endl;
 			}
 			continue;
 		}
 
-		if (buffer[0] != 'f')
+		if (!text::startsWithWord(line, "f"))
 			continue;
 
-		//int res = sscanf(buffer, "f %s %s %s %s", st[0], st[1], st[2], st[3]);
+		parseFace(line);
 
-		QString str = QString(buffer).simplified();
-
-		//simplified() leaves single spaces only: splitting on the character is what the
-		//"[ ]" pattern did, without compiling a regular expression for every face
-		QStringList list = str.split(QChar(' '), Qt::SkipEmptyParts);
-		list.removeFirst(); //'f'
-		if (list.last().startsWith('\n') || list.last().startsWith('\r'))
-			list.removeLast();
-		if (list.last().startsWith('#'))
-			list.removeLast();
-
-		//qDebug() << list;
-
-		int valence = list.size();
-
+		//a face of n corners is cut into n - 2 triangles
+		const size_t valence = corners.size();
 		if (count + (valence - 2) >= size)
 			break;
 
-		if (valence >= 3) {
-			int* face_ = new int[valence];
-			int* normal_ = new int[valence];
-			int* vtxt_ = new int[valence];
-			for (int i = 0; i < valence; i++) {
-				normal_[i] = -1;
-				vtxt_[i] = -1;
+		for (size_t m = 0; m + 2 < valence; m++) {
+			Triangle &current = faces[count];
+			const Corner *fan[3] = { &corners[0], &corners[m + 1], &corners[m + 2] };
+
+			for (int k = 0; k < 3; k++) {
+				current.vertices[k] = vertices[fan[k]->vertex];
+				if (fan[k]->uv >= 0)
+					for (int j = 0; j < 2; j++)
+						current.vertices[k].t[j] = vtxtuv[fan[k]->uv * 2 + j];
 			}
-
-			int* face1 = new int[(valence - 2) * 3];
-			int* normal1 = new int[(valence - 2) * 3];
-			int* vtxt1 = new int[(valence - 2) * 3];
-
-			for (int w = 0; w < valence; w++) {
-				int n = list[w].length();
-				int rr[3]; rr[0] = rr[1] = rr[2] = 0;
-				int rri = 0;
-				int cntSlashes = 0;
-				int cntConsecutiveSlashes = 0;
-				bool lastCharWasSlash = false;
-				for (int i = 0; i < n; i++) {
-					char c = (char)list[w][i].cell();
-					if (c == '/') {
-						cntSlashes++;
-
-						if (lastCharWasSlash) cntConsecutiveSlashes++;
-						if (rri < 3) rri++;
-
-						lastCharWasSlash = true;
-					}
-					else {
-						rr[rri] = rr[rri] * 10 + (c - '0');
-
-						lastCharWasSlash = false;
-					}
-				}
-				face_[w] = rr[0] - 1;
-				vtxt_[w] = rr[1] - 1;
-				normal_[w] = rr[2] - 1;
-
-				// Find out face format (see https://en.wikipedia.org/wiki/Wavefront_.obj_file#Face_elements)
-				// and check if the face definition contains relative indices.
-
-				// f v1 v2 v3
-				bool vertexIndicesFormat = (cntSlashes == 0) && (cntConsecutiveSlashes == 0);
-
-				// f v1/vt1 v2/vt2 v3/vt3
-				bool vertexTextureCoordIndicesFormat = (cntSlashes == 1) && (cntConsecutiveSlashes == 0);
-
-				// f v1/vt1/vn1 v2/vt2/vn2 v3/vt3/vn3
-				bool vertexNormalIndicesFormat = (cntSlashes == 2) && (cntConsecutiveSlashes == 0);
-
-				// f v1//vn1 v2//vn2 v3//vn3
-				bool vertexNormalIndicesWithoutTextureCoordIndicesFormat = (cntSlashes == 2) && (cntConsecutiveSlashes == 1);
-
-				bool faceHasRelativeIndices = false;
-
-				if (vertexIndicesFormat) {
-						faceHasRelativeIndices = (face_[w] < 0);
-				}
-				else if (vertexTextureCoordIndicesFormat) {
-						faceHasRelativeIndices = (face_[w] < 0) || (vtxt_[w] < 0);
-				}
-				else if (vertexNormalIndicesFormat) {
-						faceHasRelativeIndices = (face_[w] < 0) || (vtxt_[w] < 0) || (normal_[w] < 0);
-				}
-				else if (vertexNormalIndicesWithoutTextureCoordIndicesFormat) {
-						faceHasRelativeIndices = (face_[w] < 0) || (normal_[w] < 0);
-				}
-
-				if(faceHasRelativeIndices)
-				{
-						throw QString("Relative indexes in OBJ are not supported");
-				}
-      }
-
-			for (int j = 0; j < valence - 2; j++) {
-
-				face1[j * 3 + 0] = face_[0];
-				normal1[j * 3 + 0] = normal_[0];
-				vtxt1[j * 3 + 0] = vtxt_[0];
-
-				face1[j * 3 + 1] = face_[j + 1];
-				normal1[j * 3 + 1] = normal_[j + 1];
-				vtxt1[j * 3 + 1] = vtxt_[j + 1];
-
-				face1[j * 3 + 2] = face_[j + 2];
-				normal1[j * 3 + 2] = normal_[j + 2];
-				vtxt1[j * 3 + 2] = vtxt_[j + 2];
-			}
-
-			for (int m = 0; m <= valence - 3; m++) {
-
-				Triangle &current = faces[count];
-
+			current.tex = current_texture_id;
+			if (has_colors && current_color) {
 				for (int k = 0; k < 3; k++) {
-					current.vertices[k] = vertices[face1[m * 3 + k]];
-					/*for (int j = 0; normal1[m * 3 + k] >= 0 && j < 3; j++)
-						current.vertices[k].n[j] = vnormals[normal1[m * 3 + k] * 3 + j];*/
-					if (vtxt1[m * 3 + k] >= 0)
-						for (int j = 0; j < 2; j++)
-							current.vertices[k].t[j] = vtxtuv[vtxt1[m * 3 + k] * 2 + j];
-				}
-				current.tex = current_texture_id;
-				if (has_colors && current_color) {
-					current.vertices[0].c[0] = RED(current_color);
-					current.vertices[0].c[1] = GREEN(current_color);
-					current.vertices[0].c[2] = BLUE(current_color);
-					current.vertices[0].c[3] = ALPHA(current_color);
-
-					current.vertices[1].c[0] = RED(current_color);
-					current.vertices[1].c[1] = GREEN(current_color);
-					current.vertices[1].c[2] = BLUE(current_color);
-					current.vertices[1].c[3] = ALPHA(current_color);
-
-					current.vertices[2].c[0] = RED(current_color);
-					current.vertices[2].c[1] = GREEN(current_color);
-					current.vertices[2].c[2] = BLUE(current_color);
-					current.vertices[2].c[3] = ALPHA(current_color);
-				}
-				current.node = 0;
-				if (current.isDegenerate()) {
-					continue;
-				}
-				else {
-					count++;
-					n_triangles++;
+					current.vertices[k].c[0] = RED(current_color);
+					current.vertices[k].c[1] = GREEN(current_color);
+					current.vertices[k].c[2] = BLUE(current_color);
+					current.vertices[k].c[3] = ALPHA(current_color);
 				}
 			}
-			delete[] face_;
-			delete[] normal_;
-			delete[] vtxt_;
-			delete[] face1;
-			delete[] normal1;
-			delete[] vtxt1;
-			cpos = file.pos();
-
+			current.node = 0;
+			if (current.isDegenerate()) {
+				continue;
+			}
+			else {
+				count++;
+				n_triangles++;
+			}
 		}
-		else {
-			throw QString("could not parse face: %1").arg(buffer);
-		}
+		cpos = file.pos();
 	}
 
 
 	current_tri_pos = cpos;
-
-	//if (count == 0)
-		//std::cout << "faces read: " << n_triangles << std::endl;
 
 	return count;
 }
@@ -544,28 +428,25 @@ quint32 ObjLoader::getTriangles(quint32 size, Triangle *faces) {
 /*
  * Seeks all verteces in whole file
  */
-quint32 ObjLoader::getVertices(quint32 size, Splat *vertices) {
-	char buffer[1024];
-	
-	quint32 count = 0;
+uint32_t ObjLoader::getVertices(uint32_t size, Splat *vertices) {
+	file.seek(current_vertex_pos);
+	const char *line;
+	size_t length;
+
+	uint32_t count = 0;
 	while(count < size) {
-		int s = file.readLine(buffer, 1024);
-		if(s == -1)                     //end of file
-			return count;
-		
-		if(buffer[0] != 'v')            //skip comments, faces, etc
+		if(!file.readLine(line, length))                     //end of file
+			break;
+
+		if(line[0] != 'v' || !text::isSpace(line[1]))            //skip comments, faces, other properties, etc
 			continue;
-
-		buffer[s] = '\0';               //terminating line, readLine wont do this.
-
-		if(buffer[1] != ' ')
-			continue; //skip other vertex properties{        //vertex coordinates
 
 		Splat &vertex = vertices[count];
 		
 		vcg::Point3d p;
-		int n = sscanf(buffer, "v %lf %lf %lf", &p[0], &p[1], &p[2]);
-		if(n != 3) throw QString("error parsing vertex line %1").arg(buffer);
+		const char *s = line + 2;
+		if(!text::parseDouble(s, p[0]) || !text::parseDouble(s, p[1]) || !text::parseDouble(s, p[2]))
+			throw Error("error parsing vertex line " + excerpt(line));
 		
 		p -= origin;
 		p[0] *= scale[0];
@@ -586,5 +467,6 @@ quint32 ObjLoader::getVertices(quint32 size, Splat *vertices) {
 		current_vertex++;
 		count++;
 	}
+	current_vertex_pos = file.pos();
 	return count;
 }

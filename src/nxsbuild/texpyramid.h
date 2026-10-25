@@ -2,11 +2,12 @@
 #define TEXPYRAMID_H
 
 #include <QRect>
-#include <QString>
 #include <QImage>
 #include <QTemporaryFile>
-#include <QMutex>
 #include <list>
+#include <map>
+#include <mutex>
+#include <vector>
 #include "meshloader.h"
 
 namespace nx {
@@ -20,7 +21,7 @@ public:
 	int tex, level;
 	int width, height;
 	int tilew, tileh;              //how many tiles to make up side.
-	//std::vector<qint64> offsets; //where each tile starts in the cache.
+	//std::vector<int64_t> offsets; //where each tile starts in the cache.
 
 	void init(int tex, TexAtlas *c, QImage& texture, int _level);
 	bool init(int tex, TexAtlas *c, LoadTexture &texture, int _level);
@@ -114,7 +115,7 @@ public:
 
 	//cache_lock guards ram/disk/lru_list/cache_size/storage so tiles can be
 	//decoded concurrently by the texture-extraction worker threads.
-	QMutex cache_lock;
+	std::mutex cache_lock;
 
 private:
 	//helpers that assume cache_lock is already held by the caller

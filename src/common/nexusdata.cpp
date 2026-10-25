@@ -18,7 +18,8 @@ for more details.
 #define _FILE_OFFSET_BITS 64
 
 #include "nexusdata.h"
-#include "qtnexusfile.h"
+#include "stdnexusfile.h"
+#include "error.h"
 #include <vcg/space/line3.h>
 #include <vcg/space/intersection3.h>
 
@@ -40,7 +41,7 @@ uint16_t *NodeData::faces(Signature &sig, uint32_t nvert, char *mem) {
 
 
 NexusData::NexusData(): nodes(0), patches(0), textures(0), nodedata(0), texturedata(0), nroots(0) {
-	file = new QTNexusFile();
+	file = new StdNexusFile();
 }
 
 NexusData::~NexusData() {
@@ -80,15 +81,15 @@ void NexusData::loadHeader() {
 	//fread(&header, sizeof(Header), 1, file);
 	int readed = file->read((char *)&header, sizeof(Header));
 	if (readed != sizeof(Header))
-		throw std::string ("could not read header, file too short");
+		throw Error("could not read header, file too short");
 	if(header.magic != 0x4E787320)
-		throw std::string("could not read header, probably not a nexus file");
+		throw Error("could not read header, probably not a nexus file");
 }
 
 void NexusData::loadHeader(char *buffer) {
 	header = *(Header *)buffer;
 	if(header.magic != 0x4E787320)
-		throw std::string("could not read header, probably not a nexus file");
+		throw Error("could not read header, probably not a nexus file");
 }
 
 void NexusData::countRoots() {
@@ -162,6 +163,8 @@ uint64_t NexusData::loadRam(uint32_t n) {
 			d.memory = file->loadDZNode(n);
 		else
 			d.memory = (char *)file->map(offset, size);
+		if(!d.memory)
+			throw Error("could not read node " + std::to_string(n) + " of the nexus file");
 
 	} else {
 
@@ -259,32 +262,6 @@ uint64_t NexusData::loadRam(uint32_t n) {
 			}
 
 			//loadImageFromData(data, t);
-
-			/*
-			QImage img;
-			bool success = img.loadFromData((uchar *)data.memory, texture.getSize());
-			file->unmap((uchar *)data.memory);
-
-			if(!success) {
-				cerr << "Failed loading texture" << endl;
-				exit(0);
-			}
-
-			img = img.convertToFormat(QImage::Format_RGBA8888);
-			data.width = img.width();
-			data.height = img.height();
-
-			int imgsize = data.width*data.height*4;
-			data.memory = new char[imgsize];
-
-			//flip memory for texture
-			int linesize = img.width()*4;
-			char *mem = data.memory + linesize*(img.height()-1);
-			for(int i = 0; i < img.height(); i++) {
-				memcpy(mem, img.scanLine(i), linesize);
-				mem -= linesize;
-			}
-			*/
 			int imgsize = data.width * data.height * 4;
 			size += imgsize;
 		}

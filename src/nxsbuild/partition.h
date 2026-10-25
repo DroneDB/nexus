@@ -26,10 +26,10 @@ class StreamSoup;
 
 class Partition: public VirtualTriangleSoup {
 public:
-	Partition(QString prefix): VirtualTriangleSoup(prefix) {}
+	Partition(const std::string &prefix): VirtualTriangleSoup(prefix) {}
 	virtual ~Partition() {}
 	virtual void load(StreamSoup &stream) = 0;
-	virtual bool isInNode(quint32 node, vcg::Point3f &p) = 0;
+	virtual bool isInNode(uint32_t node, vcg::Point3f &p) = 0;
 };
 
 #endif // NX_PARTITION_H

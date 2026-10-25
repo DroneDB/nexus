@@ -1,16 +1,21 @@
-#ifndef NX_QTNEXUSFILE_H
-#define NX_QTNEXUSFILE_H
+#ifndef NX_STDNEXUSFILE_H
+#define NX_STDNEXUSFILE_H
 
+#include <string>
+
+#include "mappedfile.h"
 #include "nexusfile.h"
-#include <QFile>
-#include <QString>
+#include "textfile.h"
 
 namespace nx {
-	class QTNexusFile 
+	//A Nexus file on the local disk, opened read only: read sequentially, or mapped into memory.
+	class StdNexusFile
 		: public NexusFile {
 	private:
-		QFile file; 
-		char *readDZFile(const QString &path);
+		InputFile file;
+		MappedFile mapping;   //opened by the first map()
+		std::string name;     //UTF-8
+		char *readDZFile(const std::string &path);
 	public:
 		void setFileName(const char* uri) override;
 		const char *fileName() override;
@@ -30,4 +35,4 @@ namespace nx {
 	};
 }
 
-#endif // NX_QTNEXUSFILE_H
+#endif // NX_STDNEXUSFILE_H

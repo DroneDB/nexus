@@ -29,10 +29,10 @@ protected:
 		Low(0), Range((uint4)-1) {}
 
 public:
-	static bool getBit(uint bit, uint data) {
+	static bool getBit(unsigned int bit, unsigned int data) {
 		return (1<<bit) & data ? 1:0;
 	}
-	static void setBit(uint bit, uint &data, bool on) {
+	static void setBit(unsigned int bit, unsigned int &data, bool on) {
 		if(on)
 			data = data | (1<<bit);
 		else
@@ -64,7 +64,7 @@ public:
 	RangeEncoder(STREAM &stream): flushed(false),output(stream) {}
 	~RangeEncoder() { if (!flushed) flush(); }
 
-	void encodeChar(uint c) { encodeRange(c, c+1, 1<<8); }
+	void encodeChar(unsigned int c) { encodeRange(c, c+1, 1<<8); }
 	void encodeShort(uint2 c) { encodeRange(c, c+1, 1<<16); }
 	void encodeInt(uint4 c) {
 		uint2 h = (c>>16);      encodeShort(h);
@@ -104,8 +104,8 @@ public:
 		model.update(sym);
 	}
 
-	void encodeArray(uint len, unsigned char *c) {
-		for(uint i = 0; i < len; i++)
+	void encodeArray(unsigned int len, unsigned char *c) {
+		for(unsigned int i = 0; i < len; i++)
 			encodeChar(c[i]);
 	}
 };
@@ -134,8 +134,8 @@ public:
 		}
 	}
 
-	uint decodeChar() {
-		uint c = getCurrentCount(1<<8);
+	unsigned int decodeChar() {
+		unsigned int c = getCurrentCount(1<<8);
 		removeRange(c, c+1, 1<<8);
 		return c;
 	}
@@ -145,13 +145,13 @@ public:
 		return c;
 	}
 	uint4 decodeInt() {
-		uint v = decodeShort()<<16;
+		unsigned int v = decodeShort()<<16;
 		v += decodeShort();
 		return v;
 	}
 
-	void decodeArray(uint len, unsigned char *c) {
-		for(uint i = 0; i < len; i++)
+	void decodeArray(unsigned int len, unsigned char *c) {
+		for(unsigned int i = 0; i < len; i++)
 			c[i] = decodeChar();
 	}
 

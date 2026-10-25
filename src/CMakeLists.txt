@@ -4,10 +4,16 @@ project(nexus)
 set(HEADERS
 	${VCGDIR}/wrap/ply/plylib.h
 	common/cone.h
+	common/error.h
+	common/mappedfile.h
+	common/numeric.h
+	common/pathutil.h
 	common/signature.h
 	common/nexusdata.h
 	common/nexusfile.h
-	common/qtnexusfile.h
+	common/stdnexusfile.h
+	common/textfile.h
+	common/textparse.h
 	common/traversal.h
 	common/virtualarray.h
 	nxsbuild/kdtree.h
@@ -34,8 +40,10 @@ set(HEADERS
 set(SOURCES
 	${VCGDIR}/wrap/ply/plylib.cpp
 	common/cone.cpp
+	common/mappedfile.cpp
 	common/nexusdata.cpp
-	common/qtnexusfile.cpp
+	common/stdnexusfile.cpp
+	common/textfile.cpp
 	common/traversal.cpp
 	common/virtualarray.cpp
 	nxsbuild/kdtree.cpp
@@ -65,6 +73,10 @@ target_include_directories(nexus PUBLIC
 	$<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}>
 	$<INSTALL_INTERFACE:include>
 )
+
+# std::filesystem, and the headers of VCGLib that nexus includes need C++17. PUBLIC, so what
+# links nexus is built as C++17 too.
+target_compile_features(nexus PUBLIC cxx_std_17)
 
 # Link Qt's bundled image and text libraries and the JPEG image plugin statically when the Qt
 # build ships them as static archives, so the library carries its own JPEG codec (node textures

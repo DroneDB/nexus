@@ -170,8 +170,8 @@ private:
 	void computeNormals(std::vector<vcg::Point3s> &estimated_normals);
 	void markBoundary();
 
-	void encodeVertex(int target, const vcg::Point3i &predicted, const vcg::Point2i &texpredicted, BitStream &bitstream, std::vector<uchar> &diffs, std::vector<uchar> &tdiffs);
-	void encodeDiff(std::vector<uchar> &diffs, BitStream &stream, int val);
+	void encodeVertex(int target, const vcg::Point3i &predicted, const vcg::Point2i &texpredicted, BitStream &bitstream, std::vector<unsigned char> &diffs, std::vector<unsigned char> &tdiffs);
+	void encodeDiff(std::vector<unsigned char> &diffs, BitStream &stream, int val);
 };
 
 } //namespace

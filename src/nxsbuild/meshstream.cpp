@@ -16,8 +16,6 @@ GNU General Public License (http://www.gnu.org/licenses/gpl.txt)
 for more details.
 */
 #include <cmath>
-#include <QDebug>
-#include <QFileInfo>
 
 #include "meshstream.h"
 #include "meshloader.h"
@@ -28,6 +26,7 @@ for more details.
 #include "vcgloadermesh.h"
 #include "vcgloader.h"
 #include "tsloader.h"
+#include "../common/pathutil.h"
 
 
 #include <iostream>
@@ -47,24 +46,24 @@ void Stream::setVertexQuantization(double q) {
 	vertex_quantization = q;
 }
 
-std::unique_ptr<MeshLoader> Stream::getLoader(QString file, QString material) {
+std::unique_ptr<MeshLoader> Stream::getLoader(const std::string &file, const std::string &material) {
 	std::unique_ptr<MeshLoader> loader;
-	if(file.endsWith(".ply"))
+	if(nx::endsWith(file, ".ply"))
 		loader.reset(new PlyLoader(file));
 
-	else if(file.endsWith(".tsp"))
+	else if(nx::endsWith(file, ".tsp"))
 		loader.reset(new TspLoader(file));
 
-	else if(file.endsWith(".obj"))
+	else if(nx::endsWith(file, ".obj"))
 		loader.reset(new ObjLoader(file, material));
 
-	else if(file.endsWith(".stl"))
+	else if(nx::endsWith(file, ".stl"))
 		loader.reset(new STLLoader(file));
 
-	else if(file.endsWith(".ts")) {
+	else if(nx::endsWith(file, ".ts")) {
 		TsLoader *ts = new TsLoader(file);
 		loader.reset(ts);
-		if(!colormap.isEmpty())
+		if(colormap.size() >= 2)
 			ts->useColormapFor(colormap[0], colormap[1]);
 	}
 
@@ -74,21 +73,20 @@ std::unique_ptr<MeshLoader> Stream::getLoader(QString file, QString material) {
 		loader = new OffLoader(file, vertex_quantization, max_memory);*/
 
 //	else
-//		throw QString("Input format for file " + file + " is not supported at the moment");
+//		throw nx::Error("Input format for file " + file + " is not supported at the moment");
 	return loader;
 }
 
-vcg::Box3d Stream::getBox(QStringList paths) {
+vcg::Box3d Stream::getBox(const std::vector<std::string> &paths) {
 
 	vcg::Box3d box;
 
-	quint32 length = (1<<20); //times 52 bytes. (128Mb of data)
+	uint32_t length = (1<<20); //times 52 bytes. (128Mb of data)
 	std::unique_ptr<Splat[]> vertices(new Splat[length]);
 	
 	
-	foreach(QString file, paths) {
-		//qDebug() << "Computing box for " << qPrintable(file);
-		std::unique_ptr<MeshLoader> loader = getLoader(file, QString());
+	for(const std::string &file: paths) {
+		std::unique_ptr<MeshLoader> loader = getLoader(file, std::string());
 		loader->setMaxMemory(512*(1<<20)); //read only once... does'nt really matter.
 		while(true) {
 			int count = loader->getVertices(length, vertices.get());
@@ -115,13 +113,12 @@ void Stream::load(MeshLoader *loader) {
 	}
 }
 
-void Stream::load(QStringList paths, QString material) {
+void Stream::load(const std::vector<std::string> &paths, const std::string &material) {
 
 	has_colors = true;
 	has_normals = true;
 	has_textures = true;
-	foreach(QString file, paths) {
-		//qDebug() << "Reading" << qPrintable(file);
+	for(const std::string &file: paths) {
 		std::unique_ptr<MeshLoader> loader = getLoader(file, material);
 		load(loader.get());
 		//box.Add(loader->box); //this lineB AFTER the mesh is streamed
@@ -142,7 +139,7 @@ void Stream::clear() {
 }
 
 //bit twiddling hacks
-quint64 Stream::getLevel(qint64 v) {
+uint64_t Stream::getLevel(int64_t v) {
 	static const int MultiplyDeBruijnBitPosition[32] =  {
 		0, 1, 28, 2, 29, 14, 24, 3, 30, 22, 20, 15, 25, 17, 4, 8,
 		31, 27, 13, 23, 21, 19, 16, 7, 26, 12, 18, 6, 11, 5, 10, 9
@@ -153,8 +150,8 @@ quint64 Stream::getLevel(qint64 v) {
 void Stream::computeOrder() {
 	order.clear();
 	for(int level = levels.size()-1; level >= 0; level--) {
-		std::vector<quint64> &level_blocks = levels[level];
-		for(uint i = 0; i < level_blocks.size(); i++) {
+		std::vector<uint64_t> &level_blocks = levels[level];
+		for(unsigned int i = 0; i < level_blocks.size(); i++) {
 			order.push_back(level_blocks[i]);
 		}
 	}
@@ -164,7 +161,7 @@ void Stream::computeOrder() {
 
 //SOUP
 
-StreamSoup::StreamSoup(QString prefix):
+StreamSoup::StreamSoup(const std::string &prefix):
 	VirtualTriangleSoup(prefix) {
 }
 
@@ -172,7 +169,7 @@ void StreamSoup::loadMesh(MeshLoader *loader) {
 	loader->setMaxMemory(maxMemory());
 	loader->texOffset = textures.size();
 	//get 128Mb of data
-	quint32 length = (1<<20); //times 52 bytes.
+	uint32_t length = (1<<20); //times 52 bytes.
 	std::unique_ptr<Triangle[]> triangles(new Triangle[length]);
 	while(true) {
 		int count = loader->getTriangles(length, triangles.get());
@@ -191,7 +188,7 @@ void StreamSoup::countUvVertex(const Vertex &v, const int tex) {
 	//hash `FNV-1a` over the fields TMesh::splitSeams compares
 	auto h = 14695981039346656037ull;
 	auto fnv = [&h](const void *data, const size_t n) {
-		const auto b = static_cast<const uchar *>(data);
+		const auto b = static_cast<const unsigned char *>(data);
 		for(size_t i = 0; i < n; i++)
 			h = (h ^ b[i]) * 1099511628211ull;
 	};
@@ -200,16 +197,16 @@ void StreamSoup::countUvVertex(const Vertex &v, const int tex) {
 	fnv(&tex, sizeof(tex));
 
 	//finalizer `splitmix64` as FNV mixes the high bits poorly but HyperLogLog uses them
-	auto finalize = [](quint64 x) {
+	auto finalize = [](uint64_t x) {
 		x = (x ^ (x >> 30)) * 0xbf58476d1ce4e5b9ull;
 		x = (x ^ (x >> 27)) * 0x94d049bb133111ebull;
 		return x ^ (x >> 31);
 	};
 	h = finalize(h);
 
-	quint64 reg = h >> (64 - UvVerticesHllBits);
-	quint64 rest = h << UvVerticesHllBits;
-	quint8 rank = 1; //position of the first 1 bit
+	uint64_t reg = h >> (64 - UvVerticesHllBits);
+	uint64_t rest = h << UvVerticesHllBits;
+	uint8_t rank = 1; //position of the first 1 bit
 	while(rank <= 64 - UvVerticesHllBits && !(rest & (1ull << 63))) {
 		rest <<= 1;
 		rank++;
@@ -223,7 +220,7 @@ double StreamSoup::estimatedUvVertices() const {
 	const double alpha = 0.7213/(1 + 1.079/m);
 	double sum = 0;
 	auto empty = 0;
-	for(const quint8 r: uv_vertices_hll) {
+	for(const uint8_t r: uv_vertices_hll) {
 		sum += std::ldexp(1.0, -r);
 		if(r == 0) empty++;
 	}
@@ -247,12 +244,12 @@ void StreamSoup::pushTriangle(Triangle &triangle) {
 	if(v[0] == v[1] || v[1] == v[2] || v[2] == v[0])
 		return; */
 
-	quint64 level = getLevel(current_triangle);
+	uint64_t level = getLevel(current_triangle);
 	assert(levels.size() >= level);
 
-	quint64 block = 0;
+	uint64_t block = 0;
 	if(levels.size() == level) {  //need to add a level
-		levels.push_back(std::vector<quint64>());
+		levels.push_back(std::vector<uint64_t>());
 		block = addBlock(level);
 
 	} else {
@@ -274,7 +271,7 @@ Soup StreamSoup::streamTriangles() {
 		return Soup(NULL, NULL, 0);
 
 	flush(); //save memory
-	quint64 block = order[current_block];
+	uint64_t block = order[current_block];
 	current_block++;
 
 	return get(block);
@@ -284,8 +281,8 @@ void StreamSoup::clearVirtual() {
 	VirtualTriangleSoup::clear();
 }
 
-quint64 StreamSoup::addBlock(quint64 level) {
-	quint64 block = VirtualTriangleSoup::addBlock();
+uint64_t StreamSoup::addBlock(uint64_t level) {
+	uint64_t block = VirtualTriangleSoup::addBlock();
 	levels[level].push_back(block);
 	return block;
 }
@@ -294,14 +291,14 @@ quint64 StreamSoup::addBlock(quint64 level) {
 
 //Cloud
 
-StreamCloud::StreamCloud(QString prefix):
+StreamCloud::StreamCloud(const std::string &prefix):
 	VirtualVertexCloud(prefix) {
 }
 
 void StreamCloud::loadMesh(MeshLoader *loader) {
 	loader->setMaxMemory(maxMemory());
 	//get 128Mb of data
-	quint32 length = (1<<20); //times 52 bytes.
+	uint32_t length = (1<<20); //times 52 bytes.
 	std::unique_ptr<Splat[]> vertices(new Splat[length]);
 	while(true) {
 		int count = loader->getVertices(length, vertices.get());
@@ -320,12 +317,12 @@ void StreamCloud::pushVertex(Splat &vertex) {
 	vcg::Point3f p(vertex.v);
 	box.Add(p);
 
-	quint64 level = getLevel(current_triangle);
+	uint64_t level = getLevel(current_triangle);
 	assert(levels.size() >= level);
 
-	quint64 block = 0;
+	uint64_t block = 0;
 	if(levels.size() == level) {  //need to add a level
-		levels.push_back(std::vector<quint64>());
+		levels.push_back(std::vector<uint64_t>());
 		block = addBlock(level);
 
 	} else {
@@ -348,7 +345,7 @@ Cloud StreamCloud::streamVertices() {
 		return Cloud(NULL, NULL, 0);
 
 	flush(); //save memory
-	quint64 block = order[current_block];
+	uint64_t block = order[current_block];
 	current_block++;
 
 	return get(block);
@@ -358,8 +355,8 @@ void StreamCloud::clearVirtual() {
 	VirtualVertexCloud::clear();
 }
 
-quint64 StreamCloud::addBlock(quint64 level) {
-	quint64 block = VirtualVertexCloud::addBlock();
+uint64_t StreamCloud::addBlock(uint64_t level) {
+	uint64_t block = VirtualVertexCloud::addBlock();
 	levels[level].push_back(block);
 	return block;
 }

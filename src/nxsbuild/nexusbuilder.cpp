@@ -15,13 +15,9 @@ MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
 GNU General Public License (http://www.gnu.org/licenses/gpl.txt)
 for more details.
 */
-#include <QDebug>
-#include <QThreadPool>
-#include <QRunnable>
-#include <QFileInfo>
+#include <filesystem>
 #include <QPainter>
 #include <QImage>
-#include <QDir>
 #include <QImageWriter>
 #include "vertex_cache_optimizer.h"
 
@@ -31,6 +27,8 @@ for more details.
 #include "mesh.h"
 #include "tmesh.h"
 #include "../common/nexus.h"
+#include "../common/error.h"
+#include "../common/pathutil.h"
 
 #include <vcg/math/similarity2.h>
 #include <vcg/space/rect_packer.h>
@@ -40,9 +38,9 @@ using namespace std;
 
 using namespace nx;
 
-static qint64 pad(qint64 s) {
-	const qint64 padding = NEXUS_PADDING;
-	qint64 m = (s-1) & ~(padding -1);
+static int64_t pad(int64_t s) {
+	const int64_t padding = NEXUS_PADDING;
+	int64_t m = (s-1) & ~(padding -1);
 	return m + padding;
 }
 
@@ -100,14 +98,13 @@ vector<bool> NodeBox::markBorders(Node &node, vcg::Point3f *p, uint16_t *f) {
 // same volume as the output and reclaimable as a unit. When empty the historical
 // names are used: VirtualMemory-based caches fall back to the system temp dir,
 // the QTemporaryFile-based nodeTex to the process working directory.
-static QString nexusCacheTemplate(const QString &cacheDir, const char *name) {
-	return cacheDir.isEmpty() ? QString::fromLatin1(name)
-	                          : (cacheDir + "/" + QString::fromLatin1(name));
+static std::string nexusCacheTemplate(const std::string &cacheDir, const char *name) {
+	return cacheDir.empty() ? std::string(name) : (cacheDir + "/" + name);
 }
 
-NexusBuilder::NexusBuilder(quint32 components, const QString &cacheDir):
+NexusBuilder::NexusBuilder(uint32_t components, const std::string &cacheDir):
 	chunks(nexusCacheTemplate(cacheDir, "cache_chunks")), scaling(0.5), useNodeTex(true),
-	tex_quality(92), nodeTex(nexusCacheTemplate(cacheDir, "cache_tex")) {
+	tex_quality(92), nodeTex(QString::fromUtf8(nexusCacheTemplate(cacheDir, "cache_tex").c_str())) {
 
 	Signature &signature = header.signature;
 	signature.vertex.setComponent(VertexElement::COORD, Attribute(Attribute::FLOAT, 3));
@@ -124,7 +121,9 @@ NexusBuilder::NexusBuilder(quint32 components, const QString &cacheDir):
 	header.signature = signature;
 	header.nvert = header.nface = header.n_nodes = header.n_patches = header.n_textures = 0;
 
-	nodeTex.open();
+	if(!nodeTex.open())
+		throw nx::Error("unable to open temporary file " + nexusCacheTemplate(cacheDir, "cache_tex") + ": " +
+		                nodeTex.errorString().toUtf8().toStdString());
 }
 
 NexusBuilder::NexusBuilder(Signature &signature): chunks("cache_chunks"), scaling(0.5) {
@@ -148,7 +147,7 @@ bool NexusBuilder::initAtlas(std::vector<LoadTexture> &textures) {
 	return true;
 }
 
-void NexusBuilder::create(KDTree *tree, Stream *stream, uint top_node_size) {
+void NexusBuilder::create(KDTree *tree, Stream *stream, unsigned int top_node_size) {
 	Node sink;
 	sink.first_patch = 0;
 	nodes.push_back(sink);
@@ -176,7 +175,7 @@ void NexusBuilder::create(KDTree *tree, Stream *stream, uint top_node_size) {
 
 	//only the sink: every block was empty (no valid triangles or points in the input)
 	if(nodes.size() < 2)
-		throw QString("no valid geometry in the input: the multiresolution dag would be empty");
+		throw nx::Error("no valid geometry in the input: the multiresolution dag would be empty");
 
 	reverseDag();
 	saturate();
@@ -236,7 +235,7 @@ QImage NexusBuilder::extractNodeTex(TMesh &mesh, int level, float &error, float 
 
 			int &t = vertex_to_tex[v[i]];
 
-			if(t != -1 && t != face.tex) qDebug() << "Missing vertex replication across seams\n";
+			if(t != -1 && t != face.tex) cerr << "Missing vertex replication across seams" << endl;
 			t = face.tex;
 		}
 		components.link(v[0], v[1]);
@@ -361,10 +360,8 @@ QImage NexusBuilder::extractNodeTex(TMesh &mesh, int level, float &error, float 
 		//an error, not a blank node texture: the texture coordinates of the node are not
 		//remapped on this path, so its texture would be the size of the failed packing
 		//(over 16K a side, gigabytes of memory) and its pixels unset.
-		if(!abort_requested.exchange(true))
-			abort_message = "Failed packing: the texture in a single nexus node would be > 16K\n"
-							"Try to reduce the size of the nodes using -t (default is 4096)";
-		return QImage();
+		throw nx::TexturePackingError("Failed packing: the texture in a single nexus node would be > 16K\n"
+		                              "Try to reduce the size of the nodes using -t (default is 4096)");
 	}
 
 	if (createPowTwoTex) {
@@ -523,13 +520,12 @@ QImage NexusBuilder::extractNodeTex(TMesh &mesh, int level, float &error, float 
 		image = image.scaled(image.width() * ratio, image.height() * ratio, Qt::KeepAspectRatio);
 	}
 	//static int imgcount = 0;
-	//if (!image.save(QString("d:\\OUT_test_%1.jpg").arg(imgcount++))) std::cerr << "FAILED";
 	return image;
 }
 
 void NexusBuilder::createCloudLevel(KDTreeCloud *input, StreamCloud *output, int level) {
 
-	for(uint block = 0; block < input->nBlocks(); block++) {
+	for(unsigned int block = 0; block < input->nBlocks(); block++) {
 		Cloud cloud = input->get(block);
 		assert(cloud.size() < (1<<16));
 		if(cloud.size() == 0) continue;
@@ -541,11 +537,11 @@ void NexusBuilder::createCloudLevel(KDTreeCloud *input, StreamCloud *output, int
 		std::vector<AVertex> deleted = mesh.simplifyCloud(target_points);
 
 		//save node in nexus temporary structure
-		quint32 mesh_size = mesh.serializedSize(header.signature);
+		uint32_t mesh_size = mesh.serializedSize(header.signature);
 		mesh_size = pad(mesh_size);
-		quint32 chunk = chunks.addChunk(mesh_size);
-		uchar *buffer = chunks.getChunk(chunk);
-		quint32 patch_offset = patches.size();
+		uint32_t chunk = chunks.addChunk(mesh_size);
+		unsigned char *buffer = chunks.getChunk(chunk);
+		uint32_t patch_offset = patches.size();
 
 		std::vector<Patch> node_patches;
 		mesh.serialize(buffer, header.signature, node_patches);
@@ -554,7 +550,7 @@ void NexusBuilder::createCloudLevel(KDTreeCloud *input, StreamCloud *output, int
 		std::reverse(node_patches.begin(), node_patches.end());
 		patches.insert(patches.end(), node_patches.begin(), node_patches.end());
 
-		quint32 current_node = nodes.size();
+		uint32_t current_node = nodes.size();
 		nx::Node node = mesh.getNode();
 		node.offset = chunk; //temporaryle remember which chunk belongs to which node
 		node.error = mesh.averageDistance();
@@ -581,44 +577,17 @@ void NexusBuilder::createCloudLevel(KDTreeCloud *input, StreamCloud *output, int
 
 
 
-/*
-  Commented because the gain is negligible ( and the code is not correct either, there is
-  some problem in saving the trianglws... */
-
-
-class Worker: public QRunnable {
-public:
-	int level;
-	uint block;
-	KDTreeSoup *input;
-	StreamSoup *output;
-	NexusBuilder &builder;
-
-	Worker(NexusBuilder &_builder, KDTreeSoup *in, StreamSoup *out, uint _block, int _level):
-		builder(_builder), input(in), output(out), block(_block), level(_level) {}
-
-protected:
-	void run() {
-		builder.processBlock(input, output, block, level);
-	}
-};
-
-
-void NexusBuilder::processBlock(KDTreeSoup *input, StreamSoup *output, uint block, int level) {
-	if(abort_requested.load())   // another worker already failed, abort as well
-		return;
-
+void NexusBuilder::processBlock(KDTreeSoup *input, StreamSoup *output, unsigned int block, int level) {
 	TMesh mesh;
 	TMesh tmp; //this is needed saving a mesh with vertices on seams duplicated., and for node tex coordinates to be rearranged
 
 	Mesh mesh1;
-	quint32 mesh_size;
+	uint32_t mesh_size;
 
 
 	int ntriangles = 0;
 	{
-		//QMutexLocker locker(&m_input);
-		Soup soup = input->get(block); //soup is memory allocated by input, lock is needed.
+		Soup soup = input->get(block);
 		assert(soup.size() < (1<<16));
 		if(soup.size() == 0) return;
 
@@ -658,7 +627,8 @@ void NexusBuilder::processBlock(KDTreeSoup *input, StreamSoup *output, uint bloc
 		mesh_size = tmp.serializedSize(header.signature);
 	}
 	mesh_size = pad(mesh_size);
-	uchar *buffer = new uchar[mesh_size];
+	std::vector<unsigned char> storage(mesh_size);
+	unsigned char *buffer = storage.data();
 
 	std::vector<Patch> node_patches;
 
@@ -672,13 +642,13 @@ void NexusBuilder::processBlock(KDTreeSoup *input, StreamSoup *output, uint bloc
 
 		if(useNodeTex) {
 			QImage nodetex = extractNodeTex(tmp, level, error, pixelXedge);
-			if(nodetex.isNull()) return;
+			if(nodetex.isNull())
+				throw nx::Error("could not create the texture of a node");
 			tmp.serialize(buffer, header.signature, node_patches);
 
 			Texture t;
 
 			{
-				//QMutexLocker locker(&m_textures);
 				t.offset = nodeTex.size()/NEXUS_PADDING;
 
 				output_pixels += nodetex.width()*nodetex.height();
@@ -691,30 +661,15 @@ void NexusBuilder::processBlock(KDTreeSoup *input, StreamSoup *output, uint bloc
 #endif
 				writer.write(nodetex);
 
-				quint64 size = pad(nodeTex.size());
+				uint64_t size = pad(nodeTex.size());
 				nodeTex.resize(size);
 				nodeTex.seek(size);
 			}
 			{
-				//QMutexLocker locker(&m_builder);
 				textures.push_back(t);
 				for(Patch &patch: node_patches)
 					patch.texture = textures.size()-1; //last texture inserted
 			}
-
-			//#define DEBUG_TEXTURES
-#ifdef DEBUG_TEXTURES
-			static int counter = 0;
-
-			QString texname = QString::number(counter) + ".jpg";
-			QImageWriter rewriter(texname, "jpg");
-			rewriter.setQuality(tex_quality);
-			rewriter.write(nodetex);
-
-			tmp.textures.push_back(texname.toStdString());
-			tmp.savePlyTex(QString::number(counter) + ".ply", texname);
-			counter++;
-#endif
 		}
 
 		//VICIUOS TRICK: we could save only a texture every 2 geometry levels since the patch is contained also to a parent node.
@@ -722,16 +677,14 @@ void NexusBuilder::processBlock(KDTreeSoup *input, StreamSoup *output, uint bloc
 		//but only starting from the bottom.
 
 	}
-	quint32 chunk;
+	uint32_t chunk;
 	//done serializing, move the data to the chunk.
 	{
-		//QMutexLocker locker(&m_chunks);
 		chunk = chunks.addChunk(mesh_size);
-		uchar *chunk_buffer = chunks.getChunk(chunk);
+		unsigned char *chunk_buffer = chunks.getChunk(chunk);
 		memcpy(chunk_buffer, buffer, mesh_size);
 		chunks.dropChunk(chunk); //no neede anymore
 	}
-	delete []buffer;
 
 
 
@@ -748,7 +701,6 @@ void NexusBuilder::processBlock(KDTreeSoup *input, StreamSoup *output, uint bloc
 		if(!hasTextures()) {
 			mesh1.lockVertices();
 			{ //needed only if Mesh::QUADRICS
-				//QMutexLocker locker(&m_texsimply);
 				mesh1.quadricInit();
 			}
 
@@ -756,7 +708,6 @@ void NexusBuilder::processBlock(KDTreeSoup *input, StreamSoup *output, uint bloc
 			nface = mesh1.fn;
 
 		} else {
-			//QMutexLocker locker(&m_texsimply);
 			int nvert = ntriangles*scaling;
 
 			if(skipSimplifyLevels > 0)
@@ -773,12 +724,10 @@ void NexusBuilder::processBlock(KDTreeSoup *input, StreamSoup *output, uint bloc
 	}
 
 
-	quint32 current_node;
+	uint32_t current_node;
 	{
-		//QMutexLocker locker(&m_builder);
-
 		//patches will be reverted later, but the local order is important because of triangle_offset
-		quint32 patch_offset = patches.size();
+		uint32_t patch_offset = patches.size();
 		std::reverse(node_patches.begin(), node_patches.end());
 		patches.insert(patches.end(), node_patches.begin(), node_patches.end());
 
@@ -809,7 +758,6 @@ void NexusBuilder::processBlock(KDTreeSoup *input, StreamSoup *output, uint bloc
 	}
 
 	{
-		//QMutexLocker locker(&m_output);
 		for(int i = 0; i < nface; i++) {
 			Triangle &t = triangles[i];
 			if(!t.isDegenerate())
@@ -824,21 +772,8 @@ void NexusBuilder::createMeshLevel(KDTreeSoup *input, StreamSoup *output, int le
 	if(level > 0)
 		atlas.flush(level-1);
 
-	// TODO: we currently are unable to catch segfaults
-	// due to possible bad inputs if we run this on multiple threads
-
-	// QThreadPool pool;
-	// pool.setMaxThreadCount(n_threads);
-
-	for(uint block = 0; block < input->nBlocks(); block++) {
-		// Worker *worker = new Worker(*this, input, output, block, level);
-		// pool.start(worker);
+	for(unsigned int block = 0; block < input->nBlocks(); block++)
 		this->processBlock(input, output, block, level);
-	}
-	// pool.waitForDone();
-
-	if(abort_requested.load())
-		throw abort_message;
 }
 
 
@@ -868,10 +803,10 @@ void NexusBuilder::saturate() {
 void NexusBuilder::testSaturation() {
 
 	//test saturation:
-	for(uint n = 0; n < nodes.size()-1; n++) {
+	for(unsigned int n = 0; n < nodes.size()-1; n++) {
 		Node &node = nodes[n];
 		vcg::Sphere3f &sphere = node.sphere;
-		for(uint p = node.first_patch; p < node.last_patch(); p++) {
+		for(unsigned int p = node.first_patch; p < node.last_patch(); p++) {
 			Patch &patch = patches[p];
 			Node &child = nodes[patch.node];
 			vcg::Sphere3f s = child.sphere;
@@ -891,28 +826,26 @@ void NexusBuilder::reverseDag() {
 	std::reverse(patches.begin(), patches.end());
 
 	//first reversal: but we point now to the last_patch, not the first
-	for(uint i = 0; i < nodes.size(); i++)
+	for(unsigned int i = 0; i < nodes.size(); i++)
 		nodes[i].first_patch = patches.size() -1 - nodes[i].first_patch;
 
 	//get the previous node last +1 to become the first
-	for(uint i = nodes.size()-1; i >= 1; i--)
+	for(unsigned int i = nodes.size()-1; i >= 1; i--)
 		nodes[i].first_patch = nodes[i-1].first_patch +1;
 	nodes[0].first_patch  = 0;
 
 	//and reversed the order of the nodes.
-	for(uint i = 0; i < patches.size(); i++) {
+	for(unsigned int i = 0; i < patches.size(); i++) {
 		patches[i].node = nodes.size() - 1 - patches[i].node;
 	}
 }
 
 
-void NexusBuilder::save(QString filename) {
+void NexusBuilder::save(const std::string &filename) {
 
 	//cout << "Input squaresize " << sqrt(input_pixels) <<  " Output size " << sqrt(output_pixels) << "\n";
 
-	file.setFileName(filename);
-	if(!file.open(QIODevice::ReadWrite | QIODevice::Truncate))
-		throw QString("could not open file " + filename);
+	file.open(filename);
 
 	if(header.signature.vertex.hasNormals() && header.signature.face.hasIndex())
 		uniformNormals();
@@ -937,35 +870,35 @@ void NexusBuilder::save(QString filename) {
 	for(uint32_t i = 0; i < nroots; i++)
 		header.sphere.Add(nodes[i].tightSphere());
 
-	for(uint i = 0; i < nodes.size()-1; i++) {
+	for(unsigned int i = 0; i < nodes.size()-1; i++) {
 		nx::Node &node = nodes[i];
 		header.nface += node.nface;
 		header.nvert += node.nvert;
 	}
 
-	quint64 size = sizeof(Header)  +
+	uint64_t size = sizeof(Header)  +
 			nodes.size()*sizeof(Node) +
 			patches.size()*sizeof(Patch) +
 			textures.size()*sizeof(Texture);
 	size = pad(size);
-	quint64 index_size = size;
+	uint64_t index_size = size;
 
-	std::vector<quint32> node_chunk; //for each node the corresponding chunk
-	for(quint32 i = 0; i < nodes.size()-1; i++)
+	std::vector<uint32_t> node_chunk; //for each node the corresponding chunk
+	for(uint32_t i = 0; i < nodes.size()-1; i++)
 		node_chunk.push_back(nodes[i].offset);
 
 	//compute offsets and store them in nodes
-	for(uint i = 0; i < nodes.size()-1; i++) {
+	for(unsigned int i = 0; i < nodes.size()-1; i++) {
 		nodes[i].offset = size/NEXUS_PADDING;
-		quint32 chunk = node_chunk[i];
+		uint32_t chunk = node_chunk[i];
 		size += chunks.chunkSize(chunk);
 	}
 	nodes.back().offset = size/NEXUS_PADDING;
 
 	if(textures.size()) {
 		if(!useNodeTex) {
-			for(uint i = 0; i < textures.size()-1; i++) {
-				quint32 s = textures[i].offset;
+			for(unsigned int i = 0; i < textures.size()-1; i++) {
+				uint32_t s = textures[i].offset;
 				textures[i].offset = size/NEXUS_PADDING;
 				size += s;
 				size = pad(size);
@@ -978,7 +911,7 @@ void NexusBuilder::save(QString filename) {
 				textures.back().offset = nodeTex.size()/NEXUS_PADDING;
 
 			} else { //texture.offset holds the size of each texture
-				for(uint i = 0; i < textures.size()-1; i++)
+				for(unsigned int i = 0; i < textures.size()-1; i++)
 					textures[i].offset += size/NEXUS_PADDING;
 				size += nodeTex.size();
 				textures.back().offset = size/NEXUS_PADDING;
@@ -986,101 +919,91 @@ void NexusBuilder::save(QString filename) {
 		}
 	}
 
-	qint64 r = file.write((char*)&header, sizeof(Header));
-	if(r == -1)
-		throw(file.errorString());
+	file.write(&header, sizeof(Header));
 	assert(nodes.size());
-	file.write((char*)&(nodes[0]), sizeof(Node)*nodes.size());
-	if(patches.size())
-		file.write((char*)&(patches[0]), sizeof(Patch)*patches.size());
-	if(textures.size())
-		file.write((char*)&(textures[0]), sizeof(Texture)*textures.size());
-	file.seek(index_size);
+	file.write(nodes.data(), sizeof(Node)*nodes.size());
+	file.write(patches.data(), sizeof(Patch)*patches.size());
+	file.write(textures.data(), sizeof(Texture)*textures.size());
+	file.padTo(index_size);
 
 	//NODES
-	QString basename = filename.left(filename.size() - 4) + "_files";
+	const std::string basename = (filename.size() > 4 ? filename.substr(0, filename.size() - 4) : filename) + "_files";
 	if(header.signature.flags & Signature::Flags::DEEPZOOM) {
-		QDir dir;
-		dir.mkdir(basename);
+		std::error_code ec;
+		std::filesystem::create_directory(nx::pathFromUtf8(basename), ec);
 	}
-	for(uint i = 0; i < node_chunk.size(); i++) {
-		quint32 chunk = node_chunk[i];
-		uchar *buffer = chunks.getChunk(chunk);
+	for(unsigned int i = 0; i < node_chunk.size(); i++) {
+		uint32_t chunk = node_chunk[i];
+		unsigned char *buffer = chunks.getChunk(chunk);
 		optimizeNode(i, buffer);
 		if(header.signature.flags & Signature::Flags::DEEPZOOM) {
-			QFile nodefile(QString("%1/%2.nxn").arg(basename).arg(i));
-			nodefile.open(QFile::WriteOnly);
-			nodefile.write((char*)buffer, chunks.chunkSize(chunk));
+			nx::OutputFile nodefile;
+			nodefile.open(basename + "/" + std::to_string(i) + ".nxn");
+			nodefile.write(buffer, chunks.chunkSize(chunk));
+			nodefile.close();
 		} else
-			file.write((char*)buffer, chunks.chunkSize(chunk));
+			file.write(buffer, chunks.chunkSize(chunk));
 	}
 
 	//TEXTURES
-	//	QString basename = filename.left(filename.length()-4);
 	//compute textures offsetse
 	//Image should store all the mipmaps
 	if(textures.size()) {
 		if(useNodeTex) {
 			//todo split into pieces.
 			if(header.signature.flags & Signature::Flags::DEEPZOOM) {
-				for(uint i = 0; i < textures.size()-1; i++) {
-					quint32 s = textures[i].offset*NEXUS_PADDING;
-					quint32 size = textures[i+1].offset*NEXUS_PADDING -s;
+				for(unsigned int i = 0; i < textures.size()-1; i++) {
+					uint32_t s = textures[i].offset*NEXUS_PADDING;
+					uint32_t size = textures[i+1].offset*NEXUS_PADDING -s;
 
 					nodeTex.seek(s);
-					auto buffer = nodeTex.read(size);
+					std::vector<char> buffer(size);
+					if(nodeTex.read(buffer.data(), size) != int64_t(size))
+						throw nx::Error("failed reading texture data from temporary file.");
 
-					QFile texfile(QString("%1/%2.jpg").arg(basename).arg(i));
-					texfile.open(QFile::WriteOnly);
-					texfile.write(buffer);
+					nx::OutputFile texfile;
+					texfile.open(basename + "/" + std::to_string(i) + ".jpg");
+					texfile.write(buffer.data(), buffer.size());
+					texfile.close();
 				}
 			} else {
 				nodeTex.seek(0);
 
-				qint64 buffer_size = 64*1<<20; //64 MB
+				std::vector<char> buffer(64*1<<20); //64 MB
 				do {
-					auto buffer = nodeTex.read(buffer_size);
-					if(!buffer.size())
+					int64_t read = nodeTex.read(buffer.data(), buffer.size());
+					if(read < 0)
+						throw nx::Error("failed reading texture data from temporary file.");
+					if(read == 0)
 						break;
 
-					bool success = file.write(buffer);
-					if(!success)
-						throw QString("failed writing texture data from temporary file.");
+					file.write(buffer.data(), read);
 				} while(1);
 			}
 		} else {
-			for(int i = 0; i < textures.size()-1; i++) {
+			if(images.size() + 1 < textures.size())
+				throw nx::Error("the original textures were not given: " + std::to_string(images.size()) +
+				                " names for " + std::to_string(textures.size() - 1) + " textures");
+			for(size_t i = 0; i + 1 < textures.size(); i++) {
 				Texture &tex = textures[i];
 				assert(tex.offset == file.pos()/NEXUS_PADDING);
-				QFile image(images[i]);
-				if(!image.open(QFile::ReadOnly))
-					throw QString("could not load img %1").arg(images[i]);
-				bool success = file.write(image.readAll());
-				if(!success)
-					throw QString("failed writing texture %1").arg(images[i]);
+				std::vector<char> image = nx::readFile(images[i]);
+				file.write(image.data(), image.size());
 				//we should use texture.offset instead.
-				quint64 s = file.pos();
-				s = pad(s);
-				file.resize(s);
-				file.seek(s);
+				file.padTo(pad(file.pos()));
 			}
 		}
 	}
-	if(textures.size())
-		for(int i = 0; i < textures.size()-1; i++) {
-			QFile::remove(QString("nexus_tmp_tex%1.png").arg(i));
-		}
-	//cout << "Saving to file " << qPrintable(filename) << endl;
 	file.close();
 }
 
 
 //include sphere of the children and ensure error s bigger.
-void NexusBuilder::saturateNode(quint32 n) {
+void NexusBuilder::saturateNode(uint32_t n) {
 	const float epsilon = 1.01f;
 
 	nx::Node &node = nodes[n];
-	for(quint32 i = node.first_patch; i < node.last_patch(); i++) {
+	for(uint32_t i = node.first_patch; i < node.last_patch(); i++) {
 		nx::Patch &patch = patches[i];
 		if(patch.node == nodes.size()-1) //sink, get out
 			return;
@@ -1100,24 +1023,24 @@ void NexusBuilder::saturateNode(quint32 n) {
 	node.sphere.Radius() *= epsilon;
 }
 
-void NexusBuilder::optimizeNode(quint32 n, uchar *chunk) {
+void NexusBuilder::optimizeNode(uint32_t n, unsigned char *chunk) {
 	return;
 	Node &node = nodes[n];
 	assert(node.nface);
 
 	uint16_t *faces = (uint16_t  *)(chunk + node.nvert*header.signature.vertex.size());
 
-	uint start =  0;
-	for(uint i = node.first_patch; i < node.last_patch(); i++) {
+	unsigned int start =  0;
+	for(unsigned int i = node.first_patch; i < node.last_patch(); i++) {
 		Patch &patch = patches[i];
-		uint end = patch.triangle_offset;
-		uint nface = end - start;
+		unsigned int end = patch.triangle_offset;
+		unsigned int nface = end - start;
 		//optimizing vertex cache.
-		quint16 *triangles = new quint16[nface*3];
+		uint16_t *triangles = new uint16_t[nface*3];
 
 		bool success = vmath::vertex_cache_optimizer::optimize_post_tnl(24, faces + 3*start, nface, node.nvert,  triangles);
 		if(success)
-			memcpy(faces + start, triangles, 3*sizeof(quint16)*nface);
+			memcpy(faces + start, triangles, 3*sizeof(uint16_t)*nface);
 		else
 			cout << "Failed cache optimization" << endl;
 		delete []triangles;
@@ -1132,7 +1055,7 @@ void NexusBuilder::appendBorderVertices(uint32_t origin, uint32_t destination, s
 
 
 	//if origin != destination do not flush cache, it would invalidate pointers.
-	uchar *buffer = chunks.getChunk(chunk, origin != destination);
+	unsigned char *buffer = chunks.getChunk(chunk, origin != destination);
 
 	vcg::Point3f *point = (vcg::Point3f *)buffer;
 	int size = sizeof(vcg::Point3f) + header.signature.vertex.hasTextures()*sizeof(vcg::Point2f);
@@ -1190,8 +1113,8 @@ void NexusBuilder::uniformNormals() {
 
 		} else { //again among childrens.
 
-			for(uint p = target.first_patch; p < target.last_patch(); p++) {
-				uint n = patches[p].node;
+			for(unsigned int p = target.first_patch; p < target.last_patch(); p++) {
+				unsigned int n = patches[p].node;
 
 				appendBorderVertices(n, t, vertices);
 			}
@@ -1203,17 +1126,17 @@ void NexusBuilder::uniformNormals() {
 
 		sort(vertices.begin(), vertices.end());
 
-		uint start = 0;
+		unsigned int start = 0;
 		while(start < vertices.size()) {
 			NVertex &v = vertices[start];
 
-			uint last = start+1;
+			unsigned int last = start+1;
 			while(last < vertices.size() && vertices[last].point == v.point)
 				last++;
 
 			if(last_level && last - start > 1) { //average all normals
 				vcg::Point3f normalf(0, 0, 0);
-				for(uint k = start; k < last; k++) {
+				for(unsigned int k = start; k < last; k++) {
 					for(int l = 0; l < 3; l++)
 						normalf[l] += (*vertices[k].normal)[l];
 				}
@@ -1223,18 +1146,18 @@ void NexusBuilder::uniformNormals() {
 				for(int l = 0; l < 3; l++)
 					normals[l] = (short)(normalf[l]*32766);
 
-				for(uint k = start; k < last; k++)
+				for(unsigned int k = start; k < last; k++)
 					*vertices[k].normal = normals;
 
 			} else //just copy from first one (coming from lower level due to sorting
-				for(uint k = start; k < last; k++)
+				for(unsigned int k = start; k < last; k++)
 					*vertices[k].normal =*v.normal;
 
 			start = last;
 		}
 
 
-		/*		for(uint k = 0; k < vertices.size(); k++) {
+		/*		for(unsigned int k = 0; k < vertices.size(); k++) {
 			NVertex &v = vertices[k];
 			if(v.point != previous) {
 				//uniform normals;
@@ -1244,7 +1167,7 @@ void NexusBuilder::uniformNormals() {
 
 						vcg::Point3f normalf(0, 0, 0);
 
-						for(uint j = last; j < k; j++)
+						for(unsigned int j = last; j < k; j++)
 							for(int l = 0; l < 3; l++)
 								normalf[l] += (*vertices[j].normal)[l];
 						normalf.Normalize();
@@ -1254,7 +1177,7 @@ void NexusBuilder::uniformNormals() {
 						for(int l = 0; l < 3; l++)
 							normals[l] = (short)(normalf[l]*32766);
 
-						for(uint j = last; j < k; j++)
+						for(unsigned int j = last; j < k; j++)
 							*vertices[j].normal = normals;
 
 					} else { //just copy the first one (it's from the lowest level, due to sort)

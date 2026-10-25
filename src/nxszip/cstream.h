@@ -29,8 +29,8 @@ typedef unsigned char uchar;
 
 class CStream {
 public:
-	uchar *buffer;
-	uchar *pos; //for reading.
+	unsigned char *buffer;
+	unsigned char *pos; //for reading.
 	int allocated;
 
 	CStream(): buffer(NULL), pos(NULL), allocated(0) {}
@@ -46,7 +46,7 @@ public:
 	}
 	void reserve(int reserved) {
 		allocated = reserved;
-		pos = buffer = new uchar[allocated];
+		pos = buffer = new unsigned char[allocated];
 	}
 	void init(int /*_size*/, unsigned char *_buffer) {
 		buffer = _buffer;
@@ -61,7 +61,7 @@ public:
 			int new_size = allocated*2;
 			while(new_size < size + s)
 				new_size *= 2;
-			uchar *b = new uchar[new_size];
+			unsigned char *b = new unsigned char[new_size];
 			memcpy(b, buffer, allocated);
 			delete []buffer;
 			buffer = b;

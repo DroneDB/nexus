@@ -3,11 +3,16 @@
 #include <iostream>
 #include <QPainter>
 #include <QImageReader>
-#include <QDebug>
+#include "../common/error.h"
 #include "texpyramid.h"
 
 using namespace nx;
 using namespace std;
+
+//the texture files are named in UTF-8 like every path of Nexus; Qt wants a QString
+static QString qtPath(const std::string &path) {
+	return QString::fromUtf8(path.c_str());
+}
 
 void TexLevel::init(int t, TexAtlas* c, QImage& texture, int _level = 0) {
 	tex = t;
@@ -41,7 +46,7 @@ bool TexLevel::init(int t, TexAtlas *c, LoadTexture &texture, int _level = 0) {
 	level = _level;
 	collection = c;
 	int side = collection->side;
-	QImageReader test(texture.filename);
+	QImageReader test(qtPath(texture.filename));
 	if(!test.canRead()) return false;
 
 	texture.width = width = test.size().width();
@@ -56,7 +61,7 @@ bool TexLevel::init(int t, TexAtlas *c, LoadTexture &texture, int _level = 0) {
 			int wx = (sx + side > width)? width - sx : side;
 			int sy = y*side;
 			int wy = (sy + side > height)? height - sy : side;
-			QImageReader reader(texture.filename);
+			QImageReader reader(qtPath(texture.filename));
 			//invert y.
 			int isy = height - (sy + wy);
 			reader.setClipRect(QRect(sx, isy, wx, wy));
@@ -186,7 +191,7 @@ void TexPyramid::init(int tex, TexAtlas *c, QImage &texture) {
 
 bool TexPyramid::init(int tex, TexAtlas *c, LoadTexture &file) {
 	QImage img;
-	bool success = img.load(file.filename);
+	bool success = img.load(qtPath(file.filename));
 	if(!success)
 		return false;
 	init(tex, c, img);
@@ -207,7 +212,7 @@ QImage TexPyramid::read(int level, QRect region) {
 void TexPyramid::buildLevel(int level) {
 	if(levels.size() > (size_t)level) return;
 	if(levels.size() != (size_t)level)
-		throw QString("texture atlas cannot skip levels when building");
+		throw nx::Error("texture atlas cannot skip levels when building");
 	levels.resize(level + 1);
 	TexLevel &texlevel = levels.back();
 	texlevel.level = level;
@@ -231,7 +236,7 @@ bool TexAtlas::addTextures(std::vector<LoadTexture> &textures) {
 		TexPyramid &py = pyramids[i];
 		bool ok = py.init(i, this, textures[i]);
 		if(!ok) {
-			throw ("could not load texture: " + textures[i].filename);
+			throw nx::Error("could not load texture: " + textures[i].filename);
 		}
 	}
 	return true;
@@ -244,7 +249,7 @@ QImage TexAtlas::read(int tex, int level, QRect region) {
 
 void TexAtlas::addImg(Index index, QImage img) {
 	//cout << "Adding: tex: " << index.tex << " level: " << index.level << " index: " << index.index << endl;
-	QMutexLocker locker(&cache_lock);
+	std::lock_guard<std::mutex> locker(cache_lock);
 	addImgLocked(index, img);
 }
 
@@ -272,7 +277,7 @@ QImage TexAtlas::getImg(Index index) {
 	QByteArray bytes;
 
 	{
-		QMutexLocker locker(&cache_lock);
+		std::lock_guard<std::mutex> locker(cache_lock);
 		const auto it = ram.find(index);
 		if(it != ram.end()) {
 			//mark most-recently-used
@@ -283,11 +288,11 @@ QImage TexAtlas::getImg(Index index) {
 		//cache miss, load from disk
 		const auto dt = disk.find(index);
 		if(dt == disk.end())
-			throw QString("unespected missing image in disk and ram");
+			throw nx::Error("unespected missing image in disk and ram");
 		d = dt->second;
-		uchar *data = storage.map(d.offset, d.size);
+		unsigned char *data = storage.map(d.offset, d.size);
 		if(!data)
-			throw QString("failed mapping texture storage");
+			throw nx::Error("failed mapping texture storage");
 		bytes = QByteArray(reinterpret_cast<const char *>(data), static_cast<int>(d.size));
 		storage.unmap(data);
 	}
@@ -297,7 +302,7 @@ QImage TexAtlas::getImg(Index index) {
 	img.loadFromData(bytes);
 
 	{
-		QMutexLocker locker(&cache_lock);
+		std::lock_guard<std::mutex> locker(cache_lock);
 		//another thread may have won the race meanwhile
 		auto it = ram.find(index);
 		if(it != ram.end()) {
@@ -319,7 +324,7 @@ void TexAtlas::buildLevel(int level) {
 
 //do not store it in temporary file, we are throwing away this level.
 void TexAtlas::flush(int level) {
-	QMutexLocker locker(&cache_lock);
+	std::lock_guard<std::mutex> locker(cache_lock);
 	for (auto it = ram.cbegin(); it != ram.cend();) {
 		if (it->first.level == level) {
 			cache_size -= 4*(it->second.image.width())*(it->second.image.height());
@@ -331,7 +336,7 @@ void TexAtlas::flush(int level) {
 }
 
 void TexAtlas::pruneCache() {
-	QMutexLocker locker(&cache_lock);
+	std::lock_guard<std::mutex> locker(cache_lock);
 	pruneCacheLocked();
 }
 

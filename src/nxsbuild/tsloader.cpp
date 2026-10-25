@@ -16,22 +16,59 @@ GNU General Public License (http://www.gnu.org/licenses/gpl.txt)
 for more details.
 */
 #include "tsloader.h"
-#include <QFileInfo>
-#include <QDir>
-#include <QTextStream>
+
+#include <algorithm>
+#include <cstdio>
+#include <cstring>
 #include <iostream>
 
-using namespace std;
+#include "../common/error.h"
+#include "../common/textparse.h"
 
-TsLoader::TsLoader(QString filename):
+using namespace std;
+using namespace nx;
+
+namespace {
+
+//the pieces of a line between single spaces, empty ones included
+std::vector<std::string> splitSpaces(const std::string &line) {
+	std::vector<std::string> parts;
+	size_t start = 0;
+	while(true) {
+		const size_t space = line.find(' ', start);
+		if(space == std::string::npos) {
+			parts.push_back(line.substr(start));
+			return parts;
+		}
+		parts.push_back(line.substr(start, space - start));
+		start = space + 1;
+	}
+}
+
+//the whole text as a number; false when it is not one
+bool toFloat(const std::string &text, float &value) {
+	const char *p = text.c_str();
+	if(!text::parseFloat(p, value))
+		return false;
+	return *text::skipSpaces(p) == '\0';
+}
+
+//a number, or zero for text that is not one
+float toFloatOrZero(const std::string &text) {
+	float value = 0.0f;
+	return toFloat(text, value) ? value : 0.0f;
+}
+
+}
+
+TsLoader::TsLoader(const std::string &filename):
 	vertices("cache_tsvertex"),
 	n_vertices(0),
 	n_triangles(0),
 	current_vertex(0) {
 
-	file.setFileName(filename);
-	if(!file.open(QFile::ReadOnly))
-		throw QString("could not open file %1. Error: %2").arg(filename).arg(file.errorString());
+	if(!file.open(filename))
+		throw Error("could not open file " + filename);
 
 	//search for properties, here an example:
 	/*
@@ -45,53 +82,50 @@ TsLoader::TsLoader(QString filename):
 	*/
 }
 
-bool TsLoader::useColormapFor(const QString &_property, const QString &palette) {
+bool TsLoader::useColormapFor(const std::string &_property, const std::string &palette) {
 	property = _property;
 
 	bool inside_property = false;
-	while(1) {
-		QString line = file.readLine(1024).trimmed();
-		if(line.isEmpty())
+	const char *text;
+	size_t length;
+	while(file.readLine(text, length)) {
+		const std::string line = text::trimmed(std::string(text, length));
+		if(line.empty())
 			break;
-		if(line.startsWith(QString("PROPERTY_CLASSES"))) {
-			QStringList props = line.split(" ");
-			int pos = props.indexOf(property);
-			if(pos == -1) {
-				throw QString("Could not find property: %1").arg(property);
+		if(line.compare(0, 16, "PROPERTY_CLASSES") == 0) {
+			std::vector<std::string> props = splitSpaces(line);
+			auto found = std::find(props.begin(), props.end(), property);
+			if(found == props.end()) {
+				throw Error("Could not find property: " + property);
 			}
-			property_position = pos-1;
+			property_position = int(found - props.begin()) - 1;
 		}
 
-		if(line.startsWith(QString("PROPERTY_CLASS_HEADER %1").arg(property))) {
+		if(line.compare(0, 22 + property.size(), "PROPERTY_CLASS_HEADER " + property) == 0) {
 			inside_property = true;
 		}
 
 		if(inside_property) {
-			if(line.startsWith("low_clip")) {
-				bool ok;
-				colormap.minValue = line.split(" ").back().toFloat(&ok);
-				if(!ok) throw QString("Proble parsing line: %1").arg(line);
+			if(line.compare(0, 8, "low_clip") == 0) {
+				if(!toFloat(splitSpaces(line).back(), colormap.minValue)) throw Error("Proble parsing line: " + line);
 			}
-			if(line.startsWith("high_clip")) {
-				bool ok;
-				colormap.maxValue = line.split(" ").back().toFloat(&ok);
-				if(!ok) throw QString("Proble parsing line: %1").arg(line);
+			if(line.compare(0, 9, "high_clip") == 0) {
+				if(!toFloat(splitSpaces(line).back(), colormap.maxValue)) throw Error("Proble parsing line: " + line);
 			}
 			if(line[0] == '}') {
 				break;
 			}
 		}
-		if(line.startsWith("TFACE")) {
+		if(line.compare(0, 5, "TFACE") == 0) {
 			break;
 		}
 	}
 	file.seek(0);
 
-	bool found = colormap.setColormap(palette.toStdString());
+	bool found = colormap.setColormap(palette);
 
 	if(!found) {
-		throw QString("Could not find colormap: %1 (values accepted are plasma, spectral and viridis)");
-		return false;
+		throw Error("Could not find colormap: " + palette + " (values accepted are plasma, spectral and viridis)");
 	}
 	return true;
 }
@@ -105,20 +139,17 @@ TsLoader::~TsLoader() {
 void TsLoader::cacheVertices() {
 	vertices.setElementsPerBlock(1<<20);
 	file.seek(0);
-	char buffer[1024];
-	char tmp[32];
+	const char *buffer;
+	size_t s;
 	int cnt = 0;
 
 	while(1) {
 
-		int s = file.readLine(buffer, 1024);
-		if (s == -1) {                     //end of file
+		if (!file.readLine(buffer, s)) {                     //end of file
 			std::cout << "Vertices read: " << cnt << std::endl;
 			break;
 
 		}
-		if(s == 0) continue;            //skip empty lines
-		buffer[s] = '\0';               //terminating line, readLine wont do this.
 
 		if(strncmp(buffer, "VRTX", 4) == 0 || strncmp(buffer, "PVRTX", 5) == 0) {
 
@@ -127,14 +158,12 @@ void TsLoader::cacheVertices() {
 			n_vertices++;
 
 			vcg::Point3d p;
-			int id;
-			QString line(buffer);
-			QStringList parts = line.trimmed().split(" ");
-			if(parts.size() < 5 || parts.size() < property_position)
-				throw QString("error parsing vertex line %1 while caching").arg(buffer);
-			p[0] = parts[2].toFloat();
-			p[1] = parts[3].toFloat();
-			p[2] = parts[4].toFloat();
+			std::vector<std::string> parts = splitSpaces(text::trimmed(buffer));
+			if(parts.size() < 5 || (property_position >= 0 && parts.size() <= size_t(5 + property_position)))
+				throw Error(std::string("error parsing vertex line ") + buffer + " while caching");
+			p[0] = toFloatOrZero(parts[2]);
+			p[1] = toFloatOrZero(parts[3]);
+			p[2] = toFloatOrZero(parts[4]);
 
 			//std::string pattern = "%*s %*d %lf %lf %lf";
 			//int n = sscanf(buffer, pattern.c_str(), &p[0], &p[1], &p[2]);
@@ -150,7 +179,7 @@ void TsLoader::cacheVertices() {
 			vertex.v[2] = (float)p[2];
 
 			if(property_position >= 0) {
-				float value = parts[5 + property_position].toFloat();
+				float value = toFloatOrZero(parts[5 + property_position]);
 				std::array<unsigned char, 4> c = colormap.map(value);
 				for(int k = 0; k < 4; k++)
 					vertex.c[k] = c[k];
@@ -166,37 +195,34 @@ void TsLoader::cacheVertices() {
 		if(strncmp(buffer, "ATOM", 4) == 0) {
 			int id;
 			int n = sscanf(buffer, "%*s %*d %d", &id);
-			if(n != 1) throw QString("error parsing atom line %1 while caching").arg(buffer);
+			if(n != 1) throw Error(std::string("error parsing atom line ") + buffer + " while caching");
+			if(id < 1 || uint64_t(id) > n_vertices) throw Error(std::string("atom line ") + buffer + " refers to a vertex that is not defined");
 			vertices.resize(n_vertices+1);
 			vertices[n_vertices] = vertices[id -1];
 		}
 	}
 }
 
-void TsLoader::setMaxMemory(quint64 max_memory) {
+void TsLoader::setMaxMemory(uint64_t max_memory) {
 	vertices.setMaxMemory(max_memory);
 }
 
-quint32 TsLoader::getTriangles(quint32 size, Triangle *faces) {
+uint32_t TsLoader::getTriangles(uint32_t size, Triangle *faces) {
 
 	if (n_triangles == 0) {
 		cacheVertices();
 	}
 
-	char buffer[1024];
+	const char *buffer;
+	size_t s;
 	file.seek(current_tri_pos);
 
-	qint32 R = (0x7f << 24);
-	qint32 G = (0x7f << 16);
-	qint32 B = (0x7f << 8);
-
-	quint32 count = 0;
-	qint64 cpos = current_tri_pos;
+	uint32_t count = 0;
+	uint64_t cpos = current_tri_pos;
 
 	while (count < size) {
 		cpos = file.pos();
-		int s = file.readLine(buffer, 1024);
-		if (s == -1) {                     //end of file
+		if (!file.readLine(buffer, s)) {                     //end of file
 			cpos = file.pos();
 			break;
 		}
@@ -207,7 +233,10 @@ quint32 TsLoader::getTriangles(quint32 size, Triangle *faces) {
 		Triangle &current = faces[count];
 		int f[3];
 		int n = sscanf(buffer, "%*s %d %d %d", f, f+1, f+2);
-		if(n != 3) throw QString("error parsing triangle line %1 while reading").arg(buffer);
+		if(n != 3) throw Error(std::string("error parsing triangle line ") + buffer + " while reading");
+		for(int k = 0; k < 3; k++)
+			if(f[k] < 1 || uint64_t(f[k]) > n_vertices)
+				throw Error(std::string("triangle line ") + buffer + " refers to a vertex that is not defined");
 
 		current.vertices[0] = vertices[f[0]-1];
 		current.vertices[1] = vertices[f[1]-1];
@@ -231,27 +260,24 @@ quint32 TsLoader::getTriangles(quint32 size, Triangle *faces) {
 /*
  * Seeks all verteces in whole file
  */
-quint32 TsLoader::getVertices(quint32 size, Splat *vertices) {
-	char buffer[1024];
+uint32_t TsLoader::getVertices(uint32_t size, Splat *vertices) {
+	const char *buffer;
+	size_t s;
 
-	quint32 count = 0;
+	uint32_t count = 0;
 	while(count < size) {
-		int s = file.readLine(buffer, 1024);
-		if(s == -1)                     //end of file
+		if(!file.readLine(buffer, s))                     //end of file
 			return count;
 
 		if(strncmp(buffer, "VRTX", 4) != 0 || strncmp(buffer, "PVRTX", 5) != 0)
 			continue;
 
 
-		buffer[s] = '\0';               //terminating line, readLine wont do this.
-
-
 		Splat &vertex = vertices[count];
 
 		vcg::Point3d p;
 		int n = sscanf(buffer, "%*s %*d %lf %lf %lf", &p[0], &p[1], &p[2]);
-		if(n != 3) throw QString("error parsing vertex line %1").arg(buffer);
+		if(n != 3) throw Error(std::string("error parsing vertex line ") + buffer);
 
 		p -= origin;
 		p[0] *= scale[0];

@@ -17,23 +17,24 @@ for more details.
 */
 #include "tsploader.h"
 
+#include "../common/error.h"
+
 #include <iostream>
 using namespace std;
 
 
-TspLoader::TspLoader(QString filename) {
+TspLoader::TspLoader(const std::string &filename) {
 
 	has_colors = true;
 	has_normals = has_textures = false;
 
-	file.setFileName(filename);
-	if(!file.open(QIODevice::ReadOnly))
-		throw QString("could not open file " + filename);
+	if(!file.open(filename))
+		throw nx::Error("could not open file " + filename);
 }
 
 Triangle readTriangle(float *tmp) {
 	Triangle triangle;
-	uint color_offset = 3 * 3 * 2; //vertices and normals
+	unsigned int color_offset = 3 * 3 * 2; //vertices and normals
 	for (int i = 0; i < 3; i++) {
 		Vertex &vertex = triangle.vertices[i];
 		for (int k = 0; k < 3; k++) {
@@ -47,17 +48,17 @@ Triangle readTriangle(float *tmp) {
 	return triangle;
 }
 
-quint32 TspLoader::getTriangles(quint32 triangle_no, Triangle *buffer) {
+uint32_t TspLoader::getTriangles(uint32_t triangle_no, Triangle *buffer) {
 
-	uint vertex_size = 9 * sizeof(float);
-	uint triangle_size = 3 * vertex_size;
-	uint size = triangle_no * triangle_size;
+	unsigned int vertex_size = 9 * sizeof(float);
+	unsigned int triangle_size = 3 * vertex_size;
+	unsigned int size = triangle_no * triangle_size;
 	float *tmp = new float[size];
-	quint32 readed = file.read((char *)tmp, size) / triangle_size;
+	uint32_t readed = file.read((char *)tmp, size) / triangle_size;
 
 	float *pos = tmp;
 	int count = 0;
-	for (uint i = 0; i < readed; i++) {
+	for (unsigned int i = 0; i < readed; i++) {
 		Triangle &triangle = buffer[count];
 		triangle = readTriangle(pos);
 		pos += 3 * 9;

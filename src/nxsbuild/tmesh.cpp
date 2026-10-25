@@ -17,8 +17,8 @@ for more details.
 */
 #include <assert.h>
 
-#include <QTextStream>
-#include <QDebug>
+#include "../common/error.h"
+#include "../common/numeric.h"
 
 #include "tmesh.h"
 #include <vcg/space/index/kdtree/kdtree.h>
@@ -30,9 +30,9 @@ using namespace std;
 
 //using namespace vcg;
 
-void TMesh::loadPly(const QString& filename) {
+void TMesh::loadPly(const std::string& filename) {
 	int loadmask = 0;
-	vcg::tri::io::ImporterPLY<TMesh>::Open(*this, filename.toLocal8Bit().data(), loadmask);
+	vcg::tri::io::ImporterPLY<TMesh>::Open(*this, filename.c_str(), loadmask);
 	vcg::tri::UpdateNormal<TMesh>::PerVertexNormalized(*this);
 	vcg::tri::UpdateNormal<TMesh>::PerFaceNormalized(*this);
 }
@@ -42,10 +42,10 @@ void TMesh::load(Soup &soup) {
 	vcg::tri::Allocator<TMesh>::AddVertices(*this, soup.size() * 3);
 	vcg::tri::Allocator<TMesh>::AddFaces(*this, soup.size());
 
-	for(uint i = 0; i < soup.size(); i++) {
+	for(unsigned int i = 0; i < soup.size(); i++) {
 		Triangle &triangle = soup[i];
 		TFace &f = face[i];
-		for(uint k = 0; k < 3; k++) {
+		for(unsigned int k = 0; k < 3; k++) {
 			Vertex &in = triangle.vertices[k];
 			TVertex &v = vert[i*3 + k];
 			v.P()= vcg::Point3f(in.v[0], in.v[1], in.v[2]);
@@ -68,7 +68,7 @@ void TMesh::load(Soup &soup) {
 	std::vector<int> remap(vert.size());
 	remap[0] = 0;
 	vn = 1;
-	for(uint i = 1; i < vert.size(); i++) {
+	for(unsigned int i = 1; i < vert.size(); i++) {
 		TVertex &current = vert[i];
 		TVertex &previous = vert[vn-1];
 
@@ -80,7 +80,7 @@ void TMesh::load(Soup &soup) {
 	vert.resize(vn);
 
 	TVertex *begin = &*vert.begin();
-	for(uint i = 0; i < face.size(); i++) {
+	for(unsigned int i = 0; i < face.size(); i++) {
 		TFace &f = face[i];
 		for(int k = 0; k < 3; k++)
 			f.V(k) = begin + remap[f.V(k) - begin];
@@ -96,7 +96,7 @@ void TMesh::load(Soup &soup) {
 void TMesh::load(Cloud &cloud) {
 	vcg::tri::Allocator<TMesh>::AddVertices(*this, cloud.size());
 
-	for(uint i = 0; i < cloud.size(); i++) {
+	for(unsigned int i = 0; i < cloud.size(); i++) {
 		Splat &splat = cloud[i];
 		TVertex &v = vert[i];
 		v.P() = vcg::Point3f(splat.v[0], splat.v[1], splat.v[2]);
@@ -108,17 +108,17 @@ void TMesh::load(Cloud &cloud) {
 
 
 void TMesh::lock(std::vector<bool> &locked) {
-	for(uint i = 0; i < face.size(); i++)
+	for(unsigned int i = 0; i < face.size(); i++)
 		if(locked[i])
 			face[i].ClearW();
 }
 
 
-void TMesh::save(Soup &soup, quint32 node) {
-	for(uint i = 0; i < face.size(); i++) {
+void TMesh::save(Soup &soup, uint32_t node) {
+	for(unsigned int i = 0; i < face.size(); i++) {
 		Triangle triangle;
 		TFace &t = face[i];
-		for(uint k = 0; k < 3; k++) {
+		for(unsigned int k = 0; k < 3; k++) {
 			Vertex &vertex = triangle.vertices[k];
 			TVertex &v = *t.V(k);
 			vertex.v[0] = v.P()[0];
@@ -135,14 +135,14 @@ void TMesh::save(Soup &soup, quint32 node) {
 	}
 }
 
-void TMesh::getTriangles(Triangle *triangles, quint32 node) {
+void TMesh::getTriangles(Triangle *triangles, uint32_t node) {
 	int count = 0;
-	for(uint i = 0; i < face.size(); i++) {
+	for(unsigned int i = 0; i < face.size(); i++) {
 		TFace &t= face[i];
 		if(t.IsD()) continue;
 
 		Triangle &triangle = triangles[count++];
-		for(uint k = 0; k < 3; k++) {
+		for(unsigned int k = 0; k < 3; k++) {
 			Vertex &vertex = triangle.vertices[k];
 			TVertex &v = *t.V(k);
 			vertex.v[0] = v.P()[0];
@@ -160,9 +160,9 @@ void TMesh::getTriangles(Triangle *triangles, quint32 node) {
 	}
 }
 
-void TMesh::getVertices(Splat *vertices, quint32 node) {
+void TMesh::getVertices(Splat *vertices, uint32_t node) {
 	int count = 0;
-	for(uint i = 0; i < vert.size(); i++) {
+	for(unsigned int i = 0; i < vert.size(); i++) {
 		TVertex &v = vert[i];
 		if(v.IsD()) continue;
 
@@ -184,10 +184,10 @@ void TMesh::getVertices(Splat *vertices, quint32 node) {
 	}
 }
 
-float TMesh::simplify(quint32 target_faces, Simplification method) {
+float TMesh::simplify(uint32_t target_faces, Simplification method) {
 
 	//lock border triangles
-	for(uint i = 0; i < face.size(); i++)
+	for(unsigned int i = 0; i < face.size(); i++)
 		if(!face[i].IsW())
 			for(int k = 0; k < 3; k++)
 				face[i].V(k)->ClearW();
@@ -196,26 +196,26 @@ float TMesh::simplify(quint32 target_faces, Simplification method) {
 	switch(method) {
 	case RANDOM: error = randomSimplify(target_faces); break;
 	case QUADRICS: error = quadricSimplify(target_faces); break;
-	default: throw QString("unknown simplification method");
+	default: throw nx::Error("unknown simplification method");
 	}
 
 	//unlock everything
-	for(uint i = 0; i < vert.size(); i++)
+	for(unsigned int i = 0; i < vert.size(); i++)
 		vert[i].SetW();
-	for(uint i = 0; i < face.size(); i++)
+	for(unsigned int i = 0; i < face.size(); i++)
 		face[i].SetW();
 
 	return error;
 }
 
-std::vector<TVertex> TMesh::simplifyCloud(quint16 target_faces) {
+std::vector<TVertex> TMesh::simplifyCloud(uint16_t target_faces) {
 	vector<TVertex> vertices;
 	vertices.reserve(vert.size() - target_faces);
 	float step = vert.size()/(float)target_faces;
 	int count = 0;
 	float s = 0;
-	for(uint i = 0; i < vert.size() ;i++) {
-		uint j = (int)floor(s);
+	for(unsigned int i = 0; i < vert.size() ;i++) {
+		unsigned int j = (int)floor(s);
 		if(j == i) { //keep point
 			vert[count++] = vert[i];
 			s += step;
@@ -266,14 +266,14 @@ float TMesh::averageDistance() {
 	return avgDist/count;
 }
 
-void TMesh::savePly(QString filename) {
+void TMesh::savePly(const std::string &filename) {
 	int savemask = vcg::tri::io::Mask::IOM_VERTCOORD | vcg::tri::io::Mask::IOM_VERTNORMAL | vcg::tri::io::Mask::IOM_FACEINDEX;
-	vcg::tri::io::ExporterPLY<TMesh>::Save(*this, filename.toStdString().c_str(), savemask, false);
+	vcg::tri::io::ExporterPLY<TMesh>::Save(*this, filename.c_str(), savemask, false);
 }
 
-void TMesh::savePlyTex(QString filename, QString tex) {
+void TMesh::savePlyTex(const std::string &filename, const std::string &tex) {
 	int savemask = vcg::tri::io::Mask::IOM_VERTCOORD | vcg::tri::io::Mask::IOM_VERTNORMAL | vcg::tri::io::Mask::IOM_FACEINDEX | vcg::tri::io::Mask::IOM_VERTTEXCOORD;
-	vcg::tri::io::ExporterPLY<TMesh>::Save(*this, filename.toStdString().c_str(), savemask, false);
+	vcg::tri::io::ExporterPLY<TMesh>::Save(*this, filename.c_str(), savemask, false);
 }
 
 nx::Node TMesh::getNode()
@@ -351,22 +351,22 @@ void TMesh::splitSeams(nx::Signature &sig) {
 	}
 }
 
-quint32 TMesh::serializedSize(nx::Signature &sig) {
+uint32_t TMesh::serializedSize(nx::Signature &sig) {
 	//This should take into account duplicated vertices due to texture seams.
 	//let's created the replicated vertices.
 	assert(vn == (int)vert.size());
 	assert(fn == (int)face.size());
-	quint16 nvert = vn;
-	quint16 nface = fn;
-	quint32 size = nvert*sig.vertex.size() + nface*sig.face.size();
+	uint16_t nvert = vn;
+	uint16_t nface = fn;
+	uint32_t size = nvert*sig.vertex.size() + nface*sig.face.size();
 	return size;
 }
 
-void TMesh::serialize(uchar *buffer, nx::Signature &sig, std::vector<nx::Patch> &patches) {
+void TMesh::serialize(unsigned char *buffer, nx::Signature &sig, std::vector<nx::Patch> &patches) {
 	assert(vn == (int)vert.size());
 	assert(fn == (int)face.size());
 
-	quint32 current_node = 0;
+	uint32_t current_node = 0;
 	//find patches and triangle (splat) offsets
 	if(sig.face.hasIndex()) {
 		//sort face by node.
@@ -445,7 +445,7 @@ void TMesh::serialize(uchar *buffer, nx::Signature &sig, std::vector<nx::Patch> 
 		buffer += vert.size() * sizeof(vcg::Color4b);
 	}
 
-	quint16 *faces = (quint16 *)buffer;
+	uint16_t *faces = (uint16_t *)buffer;
 	for(int i = 0; i < fn; i++) {
 		TFace &f = face[i];
 		for(int k = 0; k < 3; k++) {
@@ -459,7 +459,7 @@ void TMesh::serialize(uchar *buffer, nx::Signature &sig, std::vector<nx::Patch> 
 	buffer += face.size() * 6;
 	if(sig.face.hasTextures()) {
 		float *texts = (float *)buffer;
-		for(uint i = 0; i < face.size(); i++) {
+		for(unsigned int i = 0; i < face.size(); i++) {
 			TFace &f = face[i];
 			for(int k = 0; k < 3; k++) {
 				texts[i*6 + k*2] = f.WT(k).U();
@@ -473,7 +473,7 @@ void TMesh::serialize(uchar *buffer, nx::Signature &sig, std::vector<nx::Patch> 
 
 vcg::Sphere3f TMesh::boundingSphere() {
 	std::vector<vcg::Point3f> vertices(vert.size());
-	for(quint32 i = 0; i < vert.size(); i++)
+	for(uint32_t i = 0; i < vert.size(); i++)
 		vertices[i] = vert[i].P();
 	vcg::Sphere3f sphere;
 	sphere.CreateTight(vertices);
@@ -496,7 +496,7 @@ nx::Cone3s TMesh::normalsCone() {
 		float l2 = (v2 - v0).Norm();
 		float bigger = l1>l2?l1:l2;
 		//skip very thin faces.
-		if(qFuzzyCompare(bigger, bigger + len))
+		if(nx::fuzzyCompare(bigger, bigger + len))
 			continue;
 		norm /= len;
 		normals.push_back(norm);
@@ -512,12 +512,12 @@ nx::Cone3s TMesh::normalsCone() {
 	return cone;
 }
 
-float TMesh::randomSimplify(quint16 /*target_faces*/) {
+float TMesh::randomSimplify(uint16_t /*target_faces*/) {
 	assert(0);
 	return -1;
 }
 
-float TMesh::quadricSimplify(quint32 target) {
+float TMesh::quadricSimplify(uint32_t target) {
 	vcg::tri::UpdateNormal<TMesh>::PerFaceNormalized(*this);
 	//degenerate norms will create problems in quadri simplification it seems.
 	for(auto &f: face) {

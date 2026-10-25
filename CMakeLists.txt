@@ -14,7 +14,7 @@ else()
 endif()
 option(NEXUS_INSTALL "Install the nexus library, its headers and its CMake package" ${NEXUS_INSTALL_DEFAULT})
 
-set (CMAKE_CXX_STANDARD 11)
+set (CMAKE_CXX_STANDARD 17)
 
 # enable setting options with SET cmake command
 set(CMAKE_POLICY_DEFAULT_CMP0077 NEW)

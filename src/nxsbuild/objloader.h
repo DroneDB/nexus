@@ -19,42 +19,59 @@ for more details.
 #define NX_OBJLOADER_H
 
 #include "meshloader.h"
+#include "../common/textfile.h"
 #include "../common/virtualarray.h"
 
-#include <QFile>
-#include <QMap>
+#include <string>
+#include <unordered_map>
 #include <vector>
 
 
 class ObjLoader: public MeshLoader {
 public:
-	ObjLoader(QString file, QString mtl);
+	//mtl, when not empty, is the material library to use instead of the one the model names
+	ObjLoader(const std::string &file, const std::string &mtl);
 	~ObjLoader();
 
-	void setMaxMemory(quint64 max_memory);
-	quint32 getTriangles(quint32 size, Triangle *buffer);
-	quint32 getVertices(quint32 size, Splat *vertex);
+	void setMaxMemory(uint64_t max_memory);
+	uint32_t getTriangles(uint32_t size, Triangle *buffer);
+	uint32_t getVertices(uint32_t size, Splat *vertex);
 
 private:
-	
-	void readMTL(QFile &file); //obj file passed to search for mtllib
+	//the vertex, texture coordinate and normal of one corner of a face as zero based indices,
+	//-1 when the face does not give one
+	struct Corner {
+		int64_t vertex, uv, normal;
+	};
+
+	void readMTL(); //obj file searched for mtllib
 	void cacheTextureUV();
 	void cacheVertices();
-	
-	QFile file;
-	QString mtl;
+	//reads the corners of a face line into corners; throws when it is malformed or refers to
+	//an element the file does not define
+	void parseFace(const char *line);
+	int64_t resolveIndex(int64_t index, uint64_t seen, uint64_t total, const char *what, const char *line);
+
+	nx::InputFile file;
+	std::string filename;
+	std::string mtl;
 	VirtualArray<Vertex> vertices;
 	std::vector<float> vtxtuv;
-	quint64 n_vertices;
-	quint64 n_triangles;
-	quint64 current_triangle;
-	quint64 current_vertex;
-	qint64  current_tri_pos = 0;
-	quint32  current_color = 0;
-	qint32  current_texture_id = -1;
-	QMap<QString, quint32> colors_map;
-	QMap<QString, QString> textures_map;
-	
-	
+	std::vector<Corner> corners;
+	uint64_t n_vertices;
+	uint64_t n_normals = 0;
+	uint64_t n_triangles;
+	uint64_t current_triangle;
+	uint64_t current_vertex;
+	uint64_t current_tri_pos = 0;
+	uint64_t current_vertex_pos = 0;
+	bool cached = false;
+	//how many vertices, texture coordinates and normals the lines read so far define: a
+	//negative index counts back from them
+	uint64_t seen_vertices = 0, seen_uvs = 0, seen_normals = 0;
+	uint32_t  current_color = 0;
+	int32_t  current_texture_id = -1;
+	std::unordered_map<std::string, uint32_t> colors_map;
+	std::unordered_map<std::string, std::string> textures_map;
 };
 #endif // NX_OBJLOADER_H
