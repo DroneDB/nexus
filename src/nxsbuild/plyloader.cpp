@@ -29,9 +29,9 @@ using namespace std;
 
 //Ugly ply stuff from vcg.
 
-//The most vertices a face may have: what a list with an uchar length, the type faces use, can
-//hold. plylib reads a list into f and t as long as the file says it is (an ASCII file can say
-//anything), so the descriptors below tell it how much room there is and a longer list fails
+//The most vertices (and the most u, v pairs) a face may have. plylib reads a list into f and t
+//as long as the file says it is (an ASCII file, or a binary one whose lists have int lengths, can
+//say anything), so the descriptors below tell it how much room there is and a longer list fails
 //the read.
 static const int MAX_FACE_VERTICES = 255;
 
@@ -75,47 +75,34 @@ PropDescriptor doublecoords[3] = {
 	{"vertex", "z",     T_DOUBLE, T_DOUBLE, offsetof(PlyVertex,dv[2]),0,0,0,0,0,0}
 };
 
-PropDescriptor vindices[2]=	{
-	{"face", "vertex_indices",T_INT,T_UINT,offsetof(PlyFace,f[0]),
-	 1,0,T_UCHAR,T_INT, offsetof(PlyFace,n) ,0, MAX_FACE_VERTICES}
-};
-
-PropDescriptor vindices_uint[1]=	{
-	{"face", "vertex_indices",T_UINT,T_UINT,offsetof(PlyFace,f[0]),
-	 1,0,T_UCHAR,T_INT, offsetof(PlyFace,n) ,0, MAX_FACE_VERTICES}
-};
-
-PropDescriptor vindices_ushort[1] = {
-	{"face", "vertex_indices",T_USHORT,T_UINT,offsetof(PlyFace,f[0]),
-	 1,0,T_UCHAR,T_INT, offsetof(PlyFace,n) ,0, MAX_FACE_VERTICES}
-};
-
-PropDescriptor vindex[1]=	{
-	{"face", "vertex_index",T_INT,T_UINT,offsetof(PlyFace,f[0]),
-	 1,0,T_UCHAR,T_INT, offsetof(PlyFace,n) ,0, MAX_FACE_VERTICES}
-};
-
-PropDescriptor vindex_uint[1]=	{
-	{"face", "vertex_index",T_UINT,T_UINT,offsetof(PlyFace,f[0]),
-	 1,0,T_UCHAR,T_INT, offsetof(PlyFace,n) ,0, MAX_FACE_VERTICES}
-};
-
-PropDescriptor vindex_ushort[1]=	{
-	{"face", "vertex_index",T_USHORT,T_UINT,offsetof(PlyFace,f[0]),
-	 1,0,T_UCHAR,T_INT, offsetof(PlyFace,n) ,0, MAX_FACE_VERTICES}
-};
-
-
-
-PropDescriptor plyprop4[1]=	{
-	{"face", "texcoord",T_FLOAT,T_FLOAT,offsetof(PlyFace,t[0]),
-	 1,0,T_UCHAR,T_INT, offsetof(PlyFace,nt) ,0, 2*MAX_FACE_VERTICES}
-};
-
 PropDescriptor plyprop5[1]=	{
 	{"face", "texnumber",T_INT,T_INT,offsetof(PlyFace, texNumber), 0,0,0,0,0,0}
 };
 
+
+//The face lists are read as the types the header declares, the lengths included: most files give
+//the length as an uchar, but a list of any integer length type (or of any integer index type) is
+//valid PLY. False when the face has no such list, or its items or length are not of the kind
+//asked for (memtype says which: T_UINT for vertex indices, T_FLOAT for texture coordinates).
+static bool addFaceList(PlyFile &pf, const char *name, int memtype, size_t offset, size_t offsetLength, size_t maxlist) {
+	const auto isInteger = [](int type) {
+		return type == T_CHAR || type == T_UCHAR || type == T_SHORT || type == T_USHORT || type == T_INT || type == T_UINT;
+	};
+	for(PlyElement &element: pf.elements) {
+		if(element.name != "face")
+			continue;
+		PlyProperty *property = element.FindProp(name);
+		if(!property || !property->islist || !isInteger(property->tipoindex))
+			return false;
+		const bool integerItems = isInteger(property->tipo);
+		const bool realItems = property->tipo == T_FLOAT || property->tipo == T_DOUBLE;
+		if(memtype == T_UINT ? !integerItems : !realItems)
+			return false;
+		return pf.AddToRead("face", name, property->tipo, memtype, offset, 1, 0,
+		                    property->tipoindex, T_INT, offsetLength, maxlist) == vcg::ply::E_NOERROR;
+	}
+	return false;
+}
 
 PlyLoader::PlyLoader(const std::string &filename):
 	vertices_element(-1),
@@ -145,15 +132,14 @@ PlyLoader::PlyLoader(const std::string &filename):
 
 		if( TFILE == start )
 		{
-			bufstr = c.substr(TFILE.length()+1);
+			bufstr = c.size() > TFILE.length() ? c.substr(TFILE.length()+1) : std::string();
 			n = static_cast<int>(bufstr.length());
 			for(i=0;i<n;i++)
 				if(bufstr[i]!='\t' && bufstr[i]>=32 && bufstr[i]<=126 )	bufclean.push_back(bufstr[i]);
 
-			char buf2[255];
-			ply::interpret_texture_name( bufclean.c_str(),filename.c_str(), buf2, 255);
+			//a string, not a buffer: the comment and the name of the file are any length
 			LoadTexture tex;
-			tex.filename = nx::text::trimmed(buf2);
+			tex.filename = nx::text::trimmed(ply::interpret_texture_name(bufclean, filename));
 			texture_filenames.push_back(tex);
 		}
 	}
@@ -235,15 +221,11 @@ void PlyLoader::init() {
 			has_normals = true;
 	}
 
-	pf.AddToRead(vindex[0]);
-	pf.AddToRead(vindex_uint[0]);
-	pf.AddToRead(vindex_ushort[0]);
-	pf.AddToRead(vindices[0]);
-	pf.AddToRead(vindices_uint[0]);
-	pf.AddToRead(vindices_ushort[0]);
+	for(const char *name: { "vertex_index", "vertex_indices" })
+		addFaceList(pf, name, T_UINT, offsetof(PlyFace, f[0]), offsetof(PlyFace, n), MAX_FACE_VERTICES);
 
-	//these calls will fail silently if no texture is present
-	if (pf.AddToRead(plyprop4[0]) == vcg::ply::E_NOERROR) {
+	//fails silently if no texture is present
+	if (addFaceList(pf, "texcoord", T_FLOAT, offsetof(PlyFace, t[0]), offsetof(PlyFace, nt), 2*MAX_FACE_VERTICES)) {
 		has_textures = true;
 		has_face_tex_coords = true;
 	}
