@@ -85,7 +85,16 @@ if(TARGET corto::corto)
 	message(STATUS "nexus - corto - using system provided library")
 	add_library(corto ALIAS corto::corto)
 else()
-	add_subdirectory(src/corto EXCLUDE_FROM_ALL)
+	# corto (a submodule, kept as upstream has it) asks for CMake 3.5, which CMake 4 builds only
+	# with a deprecation warning; it builds with the policies of 3.10, which this project requires
+	# anyway. The function keeps the setting to corto's directory (CMake before 4.0 ignores it).
+	function(nexus_add_corto)
+		if(NOT CMAKE_POLICY_VERSION_MINIMUM OR CMAKE_POLICY_VERSION_MINIMUM VERSION_LESS 3.10)
+			set(CMAKE_POLICY_VERSION_MINIMUM 3.10)
+		endif()
+		add_subdirectory(src/corto EXCLUDE_FROM_ALL)
+	endfunction()
+	nexus_add_corto()
 endif()
 
 add_subdirectory(src)
