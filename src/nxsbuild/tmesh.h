@@ -40,7 +40,7 @@ for more details.
 #include <vcg/complex/algorithms/local_optimization/tri_edge_collapse_quadric_tex.h>
 
 
-#include "../common/nexus.h"
+#include "../common/nexusdata.h"
 #include "../common/cone.h"
 
 //Quadrics simplification structures.

@@ -21,10 +21,9 @@ for more details.
 #include <string>
 #include <vector>
 
-#include <QTemporaryFile>
-
 #include <vcg/space/box3.h>
 
+#include "../common/scratchfile.h"
 #include "../common/signature.h"
 #include "../common/dag.h"
 #include "../common/textfile.h"
@@ -40,7 +39,6 @@ class Stream;
 class StreamSoup;
 class StreamCloud;
 
-class QImage;
 class TMesh;
 
 namespace nx {
@@ -90,7 +88,7 @@ public:
 	bool hasColors() { return header.signature.vertex.hasColors(); }
 	bool hasTextures() const { return header.signature.vertex.hasTextures(); }
 
-	void initAtlas(std::vector<QImage>& textures);
+	void initAtlas(std::vector<nx::Image>& textures);
 	bool initAtlas(std::vector<LoadTexture>& textures);
 	void create(KDTree *input, Stream *output, unsigned int top_node_size);
 	void createLevel(KDTree *input, Stream *output, int level);
@@ -123,7 +121,7 @@ public:
 
 	uint64_t input_pixels, output_pixels;
 	nx::TexAtlas atlas;
-	QTemporaryFile nodeTex; //texure images for each node stored here.
+	nx::ScratchFile nodeTex; //texure images for each node stored here.
 	uint64_t max_memory;
 
 	float scaling;
@@ -138,7 +136,7 @@ public:
 
 	void processBlock(KDTreeSoup *input, StreamSoup *output, unsigned int block, int level);
 
-	QImage extractNodeTex(TMesh &mesh, int level, float &error, float &pixelXedge);
+	nx::Image extractNodeTex(TMesh &mesh, int level, float &error, float &pixelXedge);
 	void invertNodes(); //
 	void saturateNode(uint32_t n);
 	void optimizeNode(uint32_t node, unsigned char *chunk);

@@ -1,9 +1,14 @@
-#export CMAKE_PREFIX_PATH=path to Qt/5.5/gcc_64/ (where you would find bin/qmake)
 cmake_minimum_required(VERSION 3.10)
 project(nexus)
 
 option(BUILD_NXS_BUILD "" OFF)
 option(BUILD_NXS_EDIT "" OFF)
+
+# The command line tools (and the viewer) were written on Qt, which the library no longer uses;
+# they are not kept up to date here.
+if(BUILD_NXS_BUILD OR BUILD_NXS_EDIT)
+	message(FATAL_ERROR "nxsbuild and nxsedit are not built from this copy of Nexus: the library no longer uses Qt, and they still do")
+endif()
 
 # A standalone build installs the static library, its headers and the CMake package. A project
 # that embeds nexus (add_subdirectory) links it into its own targets and installs only those.
@@ -21,13 +26,14 @@ set(CMAKE_POLICY_DEFAULT_CMP0077 NEW)
 
 set(CMAKE_WINDOWS_EXPORT_ALL_SYMBOLS ON)
 
-# The library needs only QtCore and QtGui (no widgets). Qt 5.15 and Qt 6 both work; a parent
-# project that already picked a Qt major version (QT_VERSION_MAJOR) gets the same one here, so
-# the library and the code linking it never mix two Qt versions in one image.
-if(NOT QT_VERSION_MAJOR)
-	find_package(QT NAMES Qt5 Qt6 COMPONENTS Core Gui REQUIRED)
-endif()
-find_package(Qt${QT_VERSION_MAJOR} COMPONENTS Core Gui REQUIRED)
+# Node textures are JPEG, and the textures of a model come as JPEG, PNG, TIFF, WebP, BMP, GIF or
+# TGA files: libjpeg-turbo, libpng, libtiff and libwebp decode and encode them, and stb_image
+# reads the small formats. No GUI toolkit is involved.
+find_package(JPEG REQUIRED)
+find_package(PNG REQUIRED)
+find_package(TIFF REQUIRED)
+find_package(WebP CONFIG REQUIRED)
+find_package(Stb REQUIRED)
 
 # nexus version
 if (EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/NEXUS_VERSION")

@@ -8,6 +8,7 @@ set(HEADERS
 	common/mappedfile.h
 	common/numeric.h
 	common/pathutil.h
+	common/scratchfile.h
 	common/signature.h
 	common/nexusdata.h
 	common/nexusfile.h
@@ -16,6 +17,8 @@ set(HEADERS
 	common/textparse.h
 	common/traversal.h
 	common/virtualarray.h
+	nxsbuild/image.h
+	nxsbuild/imageio.h
 	nxsbuild/kdtree.h
 	nxsbuild/mesh.h
 	nxsbuild/meshstream.h
@@ -42,10 +45,14 @@ set(SOURCES
 	common/cone.cpp
 	common/mappedfile.cpp
 	common/nexusdata.cpp
+	common/scratchfile.cpp
 	common/stdnexusfile.cpp
 	common/textfile.cpp
 	common/traversal.cpp
 	common/virtualarray.cpp
+	nxsbuild/image.cpp
+	nxsbuild/imageio.cpp
+	nxsbuild/imagejpeg.cpp
 	nxsbuild/kdtree.cpp
 	nxsbuild/mesh.cpp
 	nxsbuild/meshstream.cpp
@@ -78,35 +85,14 @@ target_include_directories(nexus PUBLIC
 # links nexus is built as C++17 too.
 target_compile_features(nexus PUBLIC cxx_std_17)
 
-# Link Qt's bundled image and text libraries and the JPEG image plugin statically when the Qt
-# build ships them as static archives, so the library carries its own JPEG codec (node textures
-# are JPEG) instead of looking for a plugin directory at run time. USE_NEXUS_STATIC_LIBJPEG tells
-# the parent project to import the plugin (Q_IMPORT_PLUGIN).
-set(ADDITIONAL_LIBS "")
-set(LIB_EXT "a")
-set(LIB_PREFIX "lib")
-if (WIN32)
-	set(LIB_EXT "lib")
-	set(LIB_PREFIX "")
-endif()
+# nexus ends up inside a shared library (libnxs), whose code must be position independent; the
+# thread-local state of the image decoders makes it matter.
+set_target_properties(nexus PROPERTIES POSITION_INDEPENDENT_CODE ON)
 
-get_property(qtcoreloc TARGET Qt${QT_VERSION_MAJOR}::Core PROPERTY IMPORTED_LOCATION_RELEASE)
-get_filename_component(QT_LIB_BASE ${qtcoreloc} DIRECTORY)
-set(static_libs "${LIB_PREFIX}qtlibpng.${LIB_EXT}" "${LIB_PREFIX}qtpcre2.${LIB_EXT}" "${LIB_PREFIX}qtfreetype.${LIB_EXT}")
-foreach(lib ${static_libs})
-	if (EXISTS "${QT_LIB_BASE}/${lib}")
-		message(STATUS "Linking ${lib}")
-		list(APPEND ADDITIONAL_LIBS "${QT_LIB_BASE}/${lib}")
-	endif()
-	set(QLIBJPEG_PATH "${QT_LIB_BASE}/../plugins/imageformats/${LIB_PREFIX}qjpeg.${LIB_EXT}")
-	if (EXISTS "${QLIBJPEG_PATH}")
-		message(STATUS "Linking ${LIB_PREFIX}qjpeg.${LIB_EXT}")
-		list(APPEND ADDITIONAL_LIBS "${QLIBJPEG_PATH}")
-		set_property(GLOBAL PROPERTY USE_NEXUS_STATIC_LIBJPEG "YES")
-	endif()
-endforeach()
-
-target_link_libraries(nexus PUBLIC vcglib corto Qt${QT_VERSION_MAJOR}::Core Qt${QT_VERSION_MAJOR}::Gui ${ADDITIONAL_LIBS})
+# The image libraries are private: the program that links nexus does not need their headers.
+target_include_directories(nexus PRIVATE ${Stb_INCLUDE_DIR})
+target_link_libraries(nexus PUBLIC vcglib corto)
+target_link_libraries(nexus PRIVATE JPEG::JPEG PNG::PNG TIFF::TIFF WebP::webpdecoder)
 
 if (WIN32)
 	target_compile_definitions(nexus PUBLIC NOMINMAX)

@@ -1,13 +1,13 @@
 #ifndef TEXPYRAMID_H
 #define TEXPYRAMID_H
 
-#include <QRect>
-#include <QImage>
-#include <QTemporaryFile>
 #include <list>
 #include <map>
 #include <mutex>
+#include <string>
 #include <vector>
+#include "../common/scratchfile.h"
+#include "image.h"
 #include "meshloader.h"
 
 namespace nx {
@@ -23,11 +23,10 @@ public:
 	int tilew, tileh;              //how many tiles to make up side.
 	//std::vector<int64_t> offsets; //where each tile starts in the cache.
 
-	void init(int tex, TexAtlas *c, QImage& texture, int _level);
-	bool init(int tex, TexAtlas *c, LoadTexture &texture, int _level);
-	QImage read(QRect region);
+	void init(int tex, TexAtlas *c, Image& texture, int _level);
+	Image read(int x, int y, int w, int h);
 	void build(TexLevel &parent);
-	//void build(QImage img);
+	//void build(Image img);
 };
 
 //manage a pyramid of splitted textured
@@ -36,9 +35,9 @@ public:
 	TexAtlas *collection;
 	std::vector<TexLevel> levels;
 
-	void init(int tex, TexAtlas *c, QImage &texture);
+	void init(int tex, TexAtlas *c, Image &texture);
 	bool init(int tex, TexAtlas *c, LoadTexture &file);
-	QImage read(int level, QRect region);
+	Image read(int level, int x, int y, int w, int h);
 	void buildLevel(int level);
 	void buildAllLevels(int n_levels);
 };
@@ -66,10 +65,10 @@ public:
 		}
 	};
 	struct RamData {
-		QImage image;
+		Image image;
 		std::list<Index>::iterator lru;   //position in the LRU list (front = most recent)
 		RamData() {}
-		RamData(QImage img): image(img) {}
+		RamData(Image img): image(img) {}
 	};
 	struct DiskData {
 		uint64_t offset;
@@ -86,10 +85,10 @@ public:
 
 	TexAtlas() {}
 
-	void addTextures(std::vector<QImage>& textures);
+	void addTextures(std::vector<Image>& textures);
 	//will actually fill width and height information
 	bool addTextures(std::vector<LoadTexture> &filenames);
-	QImage read(int tex, int level, QRect region);
+	Image read(int tex, int level, int x, int y, int w, int h);
 	void buildLevel(int level);
 
 	int width(int tex, int level) { 
@@ -104,14 +103,18 @@ public:
 	}
 	void flush(int level);
 	void pruneCache();
-	void addImg(Index index, QImage img);
-	QImage getImg(Index index);
+	void addImg(Index index, Image img);
+	Image getImg(Index index);
 
 	std::map<Index, RamData> ram;
 	std::map<Index, DiskData> disk;
 	std::list<Index> lru_list;        //front = most-recently-used, back = LRU eviction candidate
 
-	QTemporaryFile storage;
+	//The tiles that do not fit in RAM are kept here as JPEG images, in a temporary file created
+	//next to storage_prefix (the system's temporary folder when it is empty) the first time
+	//one is needed.
+	nx::ScratchFile storage;
+	std::string storage_prefix;
 
 	//cache_lock guards ram/disk/lru_list/cache_size/storage so tiles can be
 	//decoded concurrently by the texture-extraction worker threads.
@@ -119,7 +122,7 @@ public:
 
 private:
 	//helpers that assume cache_lock is already held by the caller
-	void addImgLocked(Index index, const QImage &img);
+	void addImgLocked(Index index, const Image &img);
 	void pruneCacheLocked();
 };
 

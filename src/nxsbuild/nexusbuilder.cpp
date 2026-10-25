@@ -15,10 +15,8 @@ MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
 GNU General Public License (http://www.gnu.org/licenses/gpl.txt)
 for more details.
 */
+#include <string.h>
 #include <filesystem>
-#include <QPainter>
-#include <QImage>
-#include <QImageWriter>
 #include "vertex_cache_optimizer.h"
 
 #include "nexusbuilder.h"
@@ -26,9 +24,10 @@ for more details.
 #include "meshstream.h"
 #include "mesh.h"
 #include "tmesh.h"
-#include "../common/nexus.h"
+#include "../common/nexusdata.h"
 #include "../common/error.h"
 #include "../common/pathutil.h"
+#include "imageio.h"
 
 #include <vcg/math/similarity2.h>
 #include <vcg/space/rect_packer.h>
@@ -94,17 +93,17 @@ vector<bool> NodeBox::markBorders(Node &node, vcg::Point3f *p, uint16_t *f) {
 
 // Build a temporary-file template for the builder's out-of-core caches. When
 // cacheDir is non-empty the caches are created there (an absolute path is
-// honoured by VirtualMemory and QTemporaryFile), keeping multi-GB scratch on the
+// honoured by VirtualMemory and ScratchFile), keeping multi-GB scratch on the
 // same volume as the output and reclaimable as a unit. When empty the historical
-// names are used: VirtualMemory-based caches fall back to the system temp dir,
-// the QTemporaryFile-based nodeTex to the process working directory.
+// names are used: the caches fall back to the system temp dir, the per-node texture
+// file to the process working directory.
 static std::string nexusCacheTemplate(const std::string &cacheDir, const char *name) {
 	return cacheDir.empty() ? std::string(name) : (cacheDir + "/" + name);
 }
 
 NexusBuilder::NexusBuilder(uint32_t components, const std::string &cacheDir):
 	chunks(nexusCacheTemplate(cacheDir, "cache_chunks")), scaling(0.5), useNodeTex(true),
-	tex_quality(92), nodeTex(QString::fromUtf8(nexusCacheTemplate(cacheDir, "cache_tex").c_str())) {
+	tex_quality(92) {
 
 	Signature &signature = header.signature;
 	signature.vertex.setComponent(VertexElement::COORD, Attribute(Attribute::FLOAT, 3));
@@ -121,9 +120,10 @@ NexusBuilder::NexusBuilder(uint32_t components, const std::string &cacheDir):
 	header.signature = signature;
 	header.nvert = header.nface = header.n_nodes = header.n_patches = header.n_textures = 0;
 
-	if(!nodeTex.open())
-		throw nx::Error("unable to open temporary file " + nexusCacheTemplate(cacheDir, "cache_tex") + ": " +
-		                nodeTex.errorString().toUtf8().toStdString());
+	nodeTex.create(nexusCacheTemplate(cacheDir, "cache_tex"));
+	//the texture tiles that do not fit in memory are kept next to the other caches too
+	if(!cacheDir.empty())
+		atlas.storage_prefix = nexusCacheTemplate(cacheDir, "cache_atlas");
 }
 
 NexusBuilder::NexusBuilder(Signature &signature): chunks("cache_chunks"), scaling(0.5) {
@@ -132,7 +132,7 @@ NexusBuilder::NexusBuilder(Signature &signature): chunks("cache_chunks"), scalin
 	header.nvert = header.nface = header.n_nodes = header.n_patches = header.n_textures = 0;
 }
 
-void NexusBuilder::initAtlas(std::vector<QImage>& textures) {
+void NexusBuilder::initAtlas(std::vector<Image>& textures) {
 	if(textures.size()) {
 		atlas.addTextures(textures);
 	}
@@ -215,7 +215,7 @@ public:
 
 };
 
-QImage NexusBuilder::extractNodeTex(TMesh &mesh, int level, float &error, float &pixelXedge) {
+Image NexusBuilder::extractNodeTex(TMesh &mesh, int level, float &error, float &pixelXedge) {
 	std::vector<vcg::Box2f> boxes;
 	std::vector<int> box_texture; //which texture each box belongs;
 	std::vector<int> vertex_to_tex(mesh.vert.size(), -1);
@@ -369,8 +369,8 @@ QImage NexusBuilder::extractNodeTex(TMesh &mesh, int level, float &error, float 
 		finalSize[ 1 ] = (int) nextPowerOf2( finalSize[ 1 ] );
 	}
 
-	QImage image(finalSize[0], finalSize[1], QImage::Format_RGB32);
-	image.fill(QColor(127, 127, 127));
+	Image image(finalSize[0], finalSize[1]);
+	image.fill(Image::rgb(127, 127, 127));
 	//copy boxes using mapping
 
 	float pdx = 1/(float)image.width();
@@ -453,71 +453,24 @@ QImage NexusBuilder::extractNodeTex(TMesh &mesh, int level, float &error, float 
 	}
 
 	{
-		//	static int boxid = 0;
-		QPainter painter(&image);
 		//convert tex coordinates using mapping
 		for(int i = 0; i < boxes.size(); i++) {
-
-			/*		vcg::Color4b  color;
-		color[2] = ((boxid % 11)*171)%63 + 63;
-		//color[1] = 255*log2((i+1))/log2(nexus->header.n_patches);
-		color[1] = ((boxid % 7)*57)%127 + 127;
-		color[0] = ((boxid % 16)*135)%127 + 127; */
-
 			int source = box_texture[i];
 			if(source < 0) continue;
 			vcg::Point2i &o = origins[i];
 			vcg::Point2i &s = sizes[i];
 
-			QImage rect = atlas.read(source, level, QRect(o[0], o[1], s[0], s[1]));
+			Image rect = atlas.read(source, level, o[0], o[1], s[0], s[1]);
 			if(i < (int)mapping.size())
-				painter.drawImage(mapping[i][0], mapping[i][1], rect);
-
-			//		painter.fillRect(mapping[i][0], mapping[i][1], s[0], s[1], QColor(color[0], color[1], color[2]));
-			//		boxid++;
+				image.draw(mapping[i][0], mapping[i][1], rect);
 		}
-
-
-		/*	painter.setPen(QColor(255,0,255));
-		for(int i = 0; i < mesh.face.size(); i++) {
-			auto &face = mesh.face[i];
-			int b = vertex_to_box[face.V(0) - &(mesh.vert[0])];
-			vcg::Point2i &o = origins[b];
-			vcg::Point2i m = mapping[b];
-
-			for(int k = 0; k < 3; k++) {
-				int j = (k==2)?0:k+1;
-				auto V0 = face.V(k);
-				auto V1 = face.V(j);
-				float x0 = V0->T().P()[0]/pdx; //how many pixels from the origin
-				float y0 = V0->T().P()[1]/pdy; //how many pixels from the origin
-				float x1 = V1->T().P()[0]/pdx; //how many pixels from the origin
-				float y1 = V1->T().P()[1]/pdy; //how many pixels from the origin
-				painter.drawLine(x0, y0, x1, y1);
-			}
-		}*/
-		/*
-		for(int i = 0; i < mesh.vert.size(); i++) {
-			auto &p = mesh.vert[i];
-			int b = vertex_to_box[i];
-			vcg::Point2i &o = origins[b];
-			vcg::Point2i m = mapping[b];
-
-
-			float x = p.T().P()[0]/pdx; //how many pixels from the origin
-			float y = p.T().P()[1]/pdy; //how many pixels from the origin
-			painter.setPen(QColor(255,0,255));
-			painter.drawEllipse(x-10, y-10, 20, 20);
-			painter.drawPoint(x, y);
-		} */
-
 	}
 
 	image = image.mirrored();
 	if (image.width() > 1024 || image.height() > 1024){
 		int maxDim = std::max<int>(image.width(), image.height());
 		float ratio = 1024.0f / (float)maxDim;
-		image = image.scaled(image.width() * ratio, image.height() * ratio, Qt::KeepAspectRatio);
+		image = image.scaledToFit(int(image.width() * ratio), int(image.height() * ratio));
 	}
 	//static int imgcount = 0;
 	return image;
@@ -641,7 +594,7 @@ void NexusBuilder::processBlock(KDTreeSoup *input, StreamSoup *output, unsigned 
 	} else {
 
 		if(useNodeTex) {
-			QImage nodetex = extractNodeTex(tmp, level, error, pixelXedge);
+			Image nodetex = extractNodeTex(tmp, level, error, pixelXedge);
 			if(nodetex.isNull())
 				throw nx::Error("could not create the texture of a node");
 			tmp.serialize(buffer, header.signature, node_patches);
@@ -653,17 +606,10 @@ void NexusBuilder::processBlock(KDTreeSoup *input, StreamSoup *output, unsigned 
 
 				output_pixels += nodetex.width()*nodetex.height();
 
-				QImageWriter writer(&nodeTex, "jpg");
-				writer.setQuality(tex_quality);
-#if QT_VERSION >= QT_VERSION_CHECK(5, 5, 0)
-				writer.setOptimizedWrite(true);
-				writer.setProgressiveScanWrite(true);
-#endif
-				writer.write(nodetex);
+				const std::vector<unsigned char> jpeg = encodeJpeg(nodetex, tex_quality, true, true);
+				nodeTex.append(jpeg.data(), jpeg.size());
 
-				uint64_t size = pad(nodeTex.size());
-				nodeTex.resize(size);
-				nodeTex.seek(size);
+				nodeTex.padTo(pad(nodeTex.size()));
 			}
 			{
 				textures.push_back(t);
@@ -956,10 +902,8 @@ void NexusBuilder::save(const std::string &filename) {
 					uint32_t s = textures[i].offset*NEXUS_PADDING;
 					uint32_t size = textures[i+1].offset*NEXUS_PADDING -s;
 
-					nodeTex.seek(s);
 					std::vector<char> buffer(size);
-					if(nodeTex.read(buffer.data(), size) != int64_t(size))
-						throw nx::Error("failed reading texture data from temporary file.");
+					nodeTex.read(s, buffer.data(), size);
 
 					nx::OutputFile texfile;
 					texfile.open(basename + "/" + std::to_string(i) + ".jpg");
@@ -967,18 +911,13 @@ void NexusBuilder::save(const std::string &filename) {
 					texfile.close();
 				}
 			} else {
-				nodeTex.seek(0);
-
 				std::vector<char> buffer(64*1<<20); //64 MB
-				do {
-					int64_t read = nodeTex.read(buffer.data(), buffer.size());
-					if(read < 0)
-						throw nx::Error("failed reading texture data from temporary file.");
-					if(read == 0)
-						break;
-
-					file.write(buffer.data(), read);
-				} while(1);
+				for(uint64_t offset = 0; offset < nodeTex.size(); ) {
+					size_t count = size_t(std::min<uint64_t>(buffer.size(), nodeTex.size() - offset));
+					nodeTex.read(offset, buffer.data(), count);
+					file.write(buffer.data(), count);
+					offset += count;
+				}
 			}
 		} else {
 			if(images.size() + 1 < textures.size())

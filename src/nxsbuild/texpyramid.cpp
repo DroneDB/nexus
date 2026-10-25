@@ -1,20 +1,15 @@
 #include <assert.h>
 #include <math.h>
 #include <iostream>
-#include <QPainter>
-#include <QImageReader>
 #include "../common/error.h"
+#include "../common/pathutil.h"
+#include "imageio.h"
 #include "texpyramid.h"
 
 using namespace nx;
 using namespace std;
 
-//the texture files are named in UTF-8 like every path of Nexus; Qt wants a QString
-static QString qtPath(const std::string &path) {
-	return QString::fromUtf8(path.c_str());
-}
-
-void TexLevel::init(int t, TexAtlas* c, QImage& texture, int _level = 0) {
+void TexLevel::init(int t, TexAtlas* c, Image& texture, int _level = 0) {
 	tex = t;
 	level = _level;
 	collection = c;
@@ -33,85 +28,42 @@ void TexLevel::init(int t, TexAtlas* c, QImage& texture, int _level = 0) {
 			int sy = y*side;
 			int wy = (sy + side > height)? height - sy : side;
 			int isy = height - (sy + wy);
-			QImage img = texture.copy(QRect(sx, isy, wx, wy));
-			img = img.convertToFormat(QImage::Format_RGB32);
-			img = img.mirrored();
+			Image img = texture.copy(sx, isy, wx, wy).mirrored();
 			collection->addImg(TexAtlas::Index(tex, level, x + y*tilew), img);
 		}
 	}
 }
 
-bool TexLevel::init(int t, TexAtlas *c, LoadTexture &texture, int _level = 0) {
-	tex = t;
-	level = _level;
-	collection = c;
-	int side = collection->side;
-	QImageReader test(qtPath(texture.filename));
-	if(!test.canRead()) return false;
-
-	texture.width = width = test.size().width();
-	texture.height = height = test.size().height();
-
-	tilew = (width-1)/side +1;
-	tileh = (height-1)/side +1;
-
-	for(int y = 0; y < tileh; y++) {
-		for(int x = 0; x < tilew; x++) {
-			int sx = x*side;
-			int wx = (sx + side > width)? width - sx : side;
-			int sy = y*side;
-			int wy = (sy + side > height)? height - sy : side;
-			QImageReader reader(qtPath(texture.filename));
-			//invert y.
-			int isy = height - (sy + wy);
-			reader.setClipRect(QRect(sx, isy, wx, wy));
-
-			QImage img(wx, wy, QImage::Format_RGB32);
-			bool ok = reader.read(&img);
-			if(!ok) {
-				//cout << "Failed reading texture: " << qPrintable(reader.fileName()) << qPrintable(reader.errorString()) <<  endl;
-				return false;
-			}
-			img = img.mirrored();
-			collection->addImg(TexAtlas::Index(tex, level, x + y*tilew), img);
-		}
-	}
-	return true;
-}
-
-QImage TexLevel::read(QRect region) {
+Image TexLevel::read(int rx, int ry, int rw, int rh) {
 	int side = collection->side;
 
-	int sx = region.x()/side;
-	int sy = region.y()/side;
-	int ex = (region.x() + region.width() - 1)/side; //last pixel needed
-	int ey = (region.y() + region.height() - 1)/side;
+	int sx = rx/side;
+	int sy = ry/side;
+	int ex = (rx + rw - 1)/side; //last pixel needed
+	int ey = (ry + rh - 1)/side;
 
-	QImage image(region.size(), QImage::Format_RGB32);
+	Image image(rw, rh);
 
-	QPainter painter(&image);
 	for(int y = sy; y <= ey; y++) {
 		for(int x = sx; x <= ex; x++) {
 			int id = x + y * tilew;
 			TexAtlas::Index index(tex, level, id);
 
-			QImage img = collection->getImg(index);
+			Image img = collection->getImg(index);
 
-			int tx = std::max(0, x*side - region.x()); //target
-			int ty = std::max(0, y*side - region.y());
-			int ox = std::max(0, region.x() - x*side); //origins
-			int oy = std::max(0, region.y() - y*side);
-			int w = std::min(region.width() -tx, side - ox);
-			int h = std::min(region.height() -ty, side - oy);
+			int tx = std::max(0, x*side - rx); //target
+			int ty = std::max(0, y*side - ry);
+			int ox = std::max(0, rx - x*side); //origins
+			int oy = std::max(0, ry - y*side);
+			int w = std::min(rw -tx, side - ox);
+			int h = std::min(rh -ty, side - oy);
 
-			QRect target(tx, ty, w, h);
-			QRect source(ox, oy, w, h);
 			assert(w > 0   && h > 0);
 			assert(tx >= 0 && ty >= 0);
 			assert(ox >= 0 && oy >= 0);
-			assert(w <= region.width());
-			assert(h <= region.height());
-			painter.drawImage(target, img, source);
+			assert(w <= rw);
+			assert(h <= rh);
+			image.draw(tx, ty, img, ox, oy, w, h);
 		}
 	}
 	collection->pruneCache();
@@ -142,37 +94,16 @@ void TexLevel::build(TexLevel &parent) {
 			int sy = y*oside;
 			int sw = (sx + oside > parent.width) ? parent.width - sx: oside;
 			int sh = (sy + oside > parent.height) ? parent.height - sy: oside;
-			QRect region(sx, sy, sw, sh);
-			QImage img = parent.read(region);
+			Image img = parent.read(sx, sy, sw, sh);
 			img = img.scaled(w, h);
 			collection->addImg(TexAtlas::Index(tex, level, x + tilew*y), img);
 		}
 	}
 }
-/*
-void TexLevel::build(QImage img) {
-	int side = collection->side;
-	width = img.width();
-	height = img.height();
-
-	tilew = 1 + (width-1)/side;
-	tileh = 1 + (height-1)/side;
-
-	for(int y = 0; y < tileh; y++) {
-		for(int x = 0; x < tilew; x++) {
-			int w = (x*side + side > width)? width - x*side : side;
-			int h = (y*side + side > height)? height - y*side : side;
-			int sx = x*side;
-			int sy = y*side;
-			QRect region(sx, sy, w, h);
-			QImage img = img.copy(region);
-			collection->addImg(TexAtlas::Index(tex, level, x + tilew*y), img);
-		}
-	}
-}*/
 
 
-void TexPyramid::init(int tex, TexAtlas *c, QImage &texture) {
+
+void TexPyramid::init(int tex, TexAtlas *c, Image &texture) {
 	collection = c;
 	int size = std::max(texture.width(), texture.height());
 	int count = 1;
@@ -185,28 +116,24 @@ void TexPyramid::init(int tex, TexAtlas *c, QImage &texture) {
 	for(int i = 0; i < levels.size(); i++) {
 		TexLevel &level = levels[i];
 		level.init(tex, collection, texture, i);
-		texture = texture.scaled(round(texture.width()*collection->scale), round(texture.height()*collection->scale));
+		//the next level is made from this one, the last has no next
+		if(i + 1 < levels.size())
+			texture = texture.scaled(round(texture.width()*collection->scale), round(texture.height()*collection->scale));
 	}
 }
 
 bool TexPyramid::init(int tex, TexAtlas *c, LoadTexture &file) {
-	QImage img;
-	bool success = img.load(qtPath(file.filename));
-	if(!success)
-		return false;
+	std::string error;
+	Image img = loadImage(file.filename, error);
+	if(img.isNull())
+		throw nx::Error("could not load texture: " + file.filename + ": " + error);
 	init(tex, c, img);
 	return true;
-
-	collection = c;
-	//create level zero.
-	levels.resize(1);
-	TexLevel &level = levels.back();
-	return level.init(tex, collection, file);
 }
 
-QImage TexPyramid::read(int level, QRect region) {
-	if(level < 0 || level >= (int)levels.size()) return QImage();
-	return levels[level].read(region);
+Image TexPyramid::read(int level, int x, int y, int w, int h) {
+	if(level < 0 || level >= (int)levels.size()) return Image();
+	return levels[level].read(x, y, w, h);
 }
 
 void TexPyramid::buildLevel(int level) {
@@ -222,7 +149,7 @@ void TexPyramid::buildLevel(int level) {
 
 
 
-void TexAtlas::addTextures(std::vector<QImage>& textures) {
+void TexAtlas::addTextures(std::vector<Image>& textures) {
 	pyramids.resize(textures.size());
 	for(size_t i = 0; i < pyramids.size(); i++) {
 		TexPyramid &py = pyramids[i];
@@ -242,19 +169,19 @@ bool TexAtlas::addTextures(std::vector<LoadTexture> &textures) {
 	return true;
 }
 
-QImage TexAtlas::read(int tex, int level, QRect region) {
-	if(tex < 0 || tex >= (int)pyramids.size()) return QImage();
-	return pyramids[tex].read(level, region);
+Image TexAtlas::read(int tex, int level, int x, int y, int w, int h) {
+	if(tex < 0 || tex >= (int)pyramids.size()) return Image();
+	return pyramids[tex].read(level, x, y, w, h);
 }
 
-void TexAtlas::addImg(Index index, QImage img) {
+void TexAtlas::addImg(Index index, Image img) {
 	//cout << "Adding: tex: " << index.tex << " level: " << index.level << " index: " << index.index << endl;
 	std::lock_guard<std::mutex> locker(cache_lock);
 	addImgLocked(index, img);
 }
 
 //assumes cache_lock is held
-void TexAtlas::addImgLocked(Index index, const QImage &img) {
+void TexAtlas::addImgLocked(Index index, const Image &img) {
 	auto existing = ram.find(index);
 	if(existing != ram.end()) {
 		//decoded concurrently -> refresh in place
@@ -272,9 +199,9 @@ void TexAtlas::addImgLocked(Index index, const QImage &img) {
 	pruneCacheLocked();
 }
 
-QImage TexAtlas::getImg(Index index) {
+Image TexAtlas::getImg(Index index) {
 	DiskData d;
-	QByteArray bytes;
+	std::vector<unsigned char> bytes;
 
 	{
 		std::lock_guard<std::mutex> locker(cache_lock);
@@ -290,16 +217,15 @@ QImage TexAtlas::getImg(Index index) {
 		if(dt == disk.end())
 			throw nx::Error("unespected missing image in disk and ram");
 		d = dt->second;
-		unsigned char *data = storage.map(d.offset, d.size);
-		if(!data)
-			throw nx::Error("failed mapping texture storage");
-		bytes = QByteArray(reinterpret_cast<const char *>(data), static_cast<int>(d.size));
-		storage.unmap(data);
+		bytes.resize(d.size);
+		storage.read(d.offset, bytes.data(), bytes.size());
 	}
 
 	//expensive decode without lock
-	QImage img(d.w, d.h, QImage::Format_RGB32);
-	img.loadFromData(bytes);
+	std::string error;
+	Image img = decodeJpeg(bytes.data(), bytes.size(), error);
+	if(img.isNull() || uint32_t(img.width()) != d.w || uint32_t(img.height()) != d.h)
+		throw nx::Error("could not read back a texture tile: " + error);
 
 	{
 		std::lock_guard<std::mutex> locker(cache_lock);
@@ -352,13 +278,15 @@ void TexAtlas::pruneCacheLocked() {
 		}
 		cache_size -= 4*(it->second.image.width())*(it->second.image.height());
 		if(disk.find(index) == disk.end()) {
+			if(!storage.isOpen())
+				storage.create(storage_prefix.empty() ? joinPath(temporaryDirectory(), "nexus_textures") : storage_prefix);
 			DiskData d;
-			d.offset = storage.pos();
 			d.w = it->second.image.width();
 			d.h = it->second.image.height();
 			//TODO: this could be made not under the lock as well
-			it->second.image.save(&storage, "jpg", quality);
-			d.size = storage.pos() - d.offset;
+			const std::vector<unsigned char> jpeg = encodeJpeg(it->second.image, quality, false, false);
+			d.offset = storage.append(jpeg.data(), jpeg.size());
+			d.size = jpeg.size();
 			disk[index] = d;
 		}
 		ram.erase(it);

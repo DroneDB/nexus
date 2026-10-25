@@ -39,7 +39,7 @@ MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
 GNU General Public License (http://www.gnu.org/licenses/gpl.txt)
 for more details.
 */
-#include "../common/nexus.h"
+#include "../common/nexusdata.h"
 #include "../common/cone.h"
 
 //Quadrics simplification structures.
