@@ -372,8 +372,9 @@ quint32 ObjLoader::getTriangles(quint32 size, Triangle *faces) {
 
 		QString str = QString(buffer).simplified();
 
-		QRegularExpression rx("[ ]");// match a space
-		QStringList list = str.split(rx, Qt::SkipEmptyParts);
+		//simplified() leaves single spaces only: splitting on the character is what the
+		//"[ ]" pattern did, without compiling a regular expression for every face
+		QStringList list = str.split(QChar(' '), Qt::SkipEmptyParts);
 		list.removeFirst(); //'f'
 		if (list.last().startsWith('\n') || list.last().startsWith('\r'))
 			list.removeLast();
