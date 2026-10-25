@@ -358,11 +358,13 @@ QImage NexusBuilder::extractNodeTex(TMesh &mesh, int level, float &error, float 
 			break;
 	}
 	if(!success) {
-		cerr << "Failed packing: the texture in a single nexus node would be > 16K\n";
-		cerr << "Try to reduce the size of the nodes using -t (default is 4096)";
-		//exit(0);
-		QImage image(finalSize[0], finalSize[1], QImage::Format_RGB32);
-		return image;
+		//an error, not a blank node texture: the texture coordinates of the node are not
+		//remapped on this path, so its texture would be the size of the failed packing
+		//(over 16K a side, gigabytes of memory) and its pixels unset.
+		if(!abort_requested.exchange(true))
+			abort_message = "Failed packing: the texture in a single nexus node would be > 16K\n"
+							"Try to reduce the size of the nodes using -t (default is 4096)";
+		return QImage();
 	}
 
 	if (createPowTwoTex) {
