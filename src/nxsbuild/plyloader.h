@@ -18,12 +18,16 @@ for more details.
 #ifndef NX_PLYLOADER_H
 #define NX_PLYLOADER_H
 
+#include <memory>
+
 #include "meshloader.h"
 #include "../common/virtualarray.h"
 
 
 #include <wrap/ply/plylib.h>
 
+
+struct PlyFace;
 
 class PlyLoader: public MeshLoader {
 public:
@@ -40,6 +44,7 @@ private:
 	vcg::ply::PlyFile pf;
 	bool double_coords = false;
 	bool has_vertex_tex_coords = false;
+	bool has_face_tex_coords = false;
 	int64_t vertices_element;
 	int64_t faces_element;
 
@@ -49,8 +54,13 @@ private:
 	uint64_t current_triangle;
 	uint64_t current_vertex;
 
+	//the face being cut into triangles, and the vertex the next of them starts from
+	std::unique_ptr<PlyFace> face;
+	int face_corner = 0;
+
 	void init();
 	void cacheVertices();
+	void readFace();
 	//reads the next element of the current ply element type, throws if the file ends or is malformed
 	void readElement(void *element, const char *name, uint64_t index, uint64_t total);
 };

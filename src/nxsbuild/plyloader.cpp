@@ -17,6 +17,7 @@ for more details.
 */
 #include "plyloader.h"
 #include <math.h>
+#include <algorithm>
 #include "../common/error.h"
 #include "../common/textparse.h"
 using namespace vcg;
@@ -27,12 +28,18 @@ using namespace std;
 
 //Ugly ply stuff from vcg.
 
+//The most vertices a face may have: what a list with an uchar length, the type faces use, can
+//hold. plylib reads a list into f and t as long as the file says it is (an ASCII file can say
+//anything), so the descriptors below tell it how much room there is and a longer list fails
+//the read.
+static const int MAX_FACE_VERTICES = 255;
+
 struct PlyFace {
-	uint32_t f[3];
-	float t[6];
+	uint32_t f[MAX_FACE_VERTICES];
+	float t[2*MAX_FACE_VERTICES]; //a u, v pair per vertex
 	uint32_t texNumber;
-	unsigned char n;  //number of vertex indices read into f
-	unsigned char nt; //number of texture coordinates read into t
+	int n;  //number of vertex indices in the file, read into f when it fits
+	int nt; //number of texture coordinates in the file, read into t when it fits
 };
 
 struct PlyVertex {
@@ -69,39 +76,39 @@ PropDescriptor doublecoords[3] = {
 
 PropDescriptor vindices[2]=	{
 	{"face", "vertex_indices",T_INT,T_UINT,offsetof(PlyFace,f[0]),
-	 1,0,T_UCHAR,T_UCHAR, offsetof(PlyFace,n) ,0}
+	 1,0,T_UCHAR,T_INT, offsetof(PlyFace,n) ,0, MAX_FACE_VERTICES}
 };
 
 PropDescriptor vindices_uint[1]=	{
 	{"face", "vertex_indices",T_UINT,T_UINT,offsetof(PlyFace,f[0]),
-	 1,0,T_UCHAR,T_UCHAR, offsetof(PlyFace,n) ,0}
+	 1,0,T_UCHAR,T_INT, offsetof(PlyFace,n) ,0, MAX_FACE_VERTICES}
 };
 
 PropDescriptor vindices_ushort[1] = {
 	{"face", "vertex_indices",T_USHORT,T_UINT,offsetof(PlyFace,f[0]),
-	 1,0,T_UCHAR,T_UCHAR, offsetof(PlyFace,n) ,0}
+	 1,0,T_UCHAR,T_INT, offsetof(PlyFace,n) ,0, MAX_FACE_VERTICES}
 };
 
 PropDescriptor vindex[1]=	{
 	{"face", "vertex_index",T_INT,T_UINT,offsetof(PlyFace,f[0]),
-	 1,0,T_UCHAR,T_UCHAR, offsetof(PlyFace,n) ,0}
+	 1,0,T_UCHAR,T_INT, offsetof(PlyFace,n) ,0, MAX_FACE_VERTICES}
 };
 
 PropDescriptor vindex_uint[1]=	{
 	{"face", "vertex_index",T_UINT,T_UINT,offsetof(PlyFace,f[0]),
-	 1,0,T_UCHAR,T_UCHAR, offsetof(PlyFace,n) ,0}
+	 1,0,T_UCHAR,T_INT, offsetof(PlyFace,n) ,0, MAX_FACE_VERTICES}
 };
 
 PropDescriptor vindex_ushort[1]=	{
 	{"face", "vertex_index",T_USHORT,T_UINT,offsetof(PlyFace,f[0]),
-	 1,0,T_UCHAR,T_UCHAR, offsetof(PlyFace,n) ,0}
+	 1,0,T_UCHAR,T_INT, offsetof(PlyFace,n) ,0, MAX_FACE_VERTICES}
 };
 
 
 
 PropDescriptor plyprop4[1]=	{
 	{"face", "texcoord",T_FLOAT,T_FLOAT,offsetof(PlyFace,t[0]),
-	 1,0,T_UCHAR,T_UCHAR, offsetof(PlyFace,nt) ,0}
+	 1,0,T_UCHAR,T_INT, offsetof(PlyFace,nt) ,0, 2*MAX_FACE_VERTICES}
 };
 
 PropDescriptor plyprop5[1]=	{
@@ -116,7 +123,8 @@ PlyLoader::PlyLoader(const std::string &filename):
 	n_vertices(0),
 	n_triangles(0),
 	current_triangle(0),
-	current_vertex(0) {
+	current_vertex(0),
+	face(new PlyFace()) {
 
 	int val = pf.Open(filename.c_str(), PlyFile::MODE_READ);
 	if(val == -1) {
@@ -234,8 +242,10 @@ void PlyLoader::init() {
 	pf.AddToRead(vindices_ushort[0]);
 
 	//these calls will fail silently if no texture is present
-	if (pf.AddToRead(plyprop4[0]) == vcg::ply::E_NOERROR)
+	if (pf.AddToRead(plyprop4[0]) == vcg::ply::E_NOERROR) {
 		has_textures = true;
+		has_face_tex_coords = true;
+	}
 
 	if (pf.AddToRead(plyprop5[0]) == vcg::ply::E_NOERROR) { }
 
@@ -291,6 +301,47 @@ void PlyLoader::setMaxMemory(uint64_t max_memory) {
 	vertices.setMaxMemory(max_memory);
 }
 
+//reads the next face into face, checks it and starts its fan
+void PlyLoader::readFace() {
+	auto which = [&]() {
+		return "ply face " + std::to_string(current_triangle) + " of " + std::to_string(n_triangles);
+	};
+	auto badIndexCount = [&]() {
+		return nx::Error(which() + " has " + std::to_string(face->n) + " vertex indices; a face has 3 to " +
+		                 std::to_string(MAX_FACE_VERTICES));
+	};
+
+	face->n = 0;
+	face->nt = 0;
+	const bool read = pf.Read(face.get()) != -1;
+
+	//plylib stores the length of a list before it finds the list too long to read, so a face
+	//of too many vertices is reported as that rather than as a malformed file. A vertex index
+	//list shorter than 3 (or no index list at all) is not a face either.
+	if(face->n < 0 || face->n > MAX_FACE_VERTICES || (read && face->n < 3))
+		throw badIndexCount();
+	if(face->nt < 0 || face->nt > 2*MAX_FACE_VERTICES)
+		throw nx::Error(which() + " has " + std::to_string(face->nt) + " texture coordinates; a face has at most " +
+		                std::to_string(2*MAX_FACE_VERTICES));
+	if(!read)
+		throw nx::Error("ply file is truncated or malformed: could not read " + which());
+
+	for(int k = 0; k < face->n; k++)
+		if(face->f[k] >= n_vertices)
+			throw nx::Error("Bad index in triangle list.");
+
+	//a u, v pair for each vertex, or none: a face without them gets 0, 0 (it used to get the
+	//pairs of the face read before it)
+	if(has_face_tex_coords && face->nt != 0 && face->nt != 2*face->n)
+		throw nx::Error(which() + " has " + std::to_string(face->n) + " vertex indices and " + std::to_string(face->nt) +
+		                " texture coordinates; expected none or " + std::to_string(2*face->n));
+	if(face->nt == 0)
+		std::fill(face->t, face->t + 2*face->n, 0.0f);
+
+	current_triangle++;
+	face_corner = 1;
+}
+
 uint32_t PlyLoader::getTriangles(uint32_t size, Triangle *buffer) {
 	if(faces_element == -1)
 		throw nx::Error("ply has no faces!");
@@ -298,31 +349,27 @@ uint32_t PlyLoader::getTriangles(uint32_t size, Triangle *buffer) {
 	if(current_triangle == 0)
 		cacheVertices();
 
-	if(current_triangle >= n_triangles) return 0;
-
 	uint32_t count = 0;
 
-	PlyFace face = PlyFace();
-	for(uint32_t i = 0; i < size && current_triangle < n_triangles; i++) {
+	//a face of n vertices is cut into the n - 2 triangles of a fan around its first vertex,
+	//like the OBJ faces; a face whose triangles do not all fit in buffer goes on in the next call
+	while(count < size) {
+		if(face_corner == 0) {
+			if(current_triangle >= n_triangles)
+				break;
+			readFace();
+		}
 
-		//the vertex index list stores its length in face.n: a list shorter
-		//than 3 (or no index list at all) leaves face.f unwritten.
-		face.n = 0;
-		readElement(&face, "face", current_triangle, n_triangles);
-		if(face.n < 3)
-			throw nx::Error("ply file is malformed: face " + std::to_string(current_triangle) + " has " +
-			                std::to_string(int(face.n)) + " vertex indices, expected 3");
+		const int fan[3] = { 0, face_corner, face_corner + 1 };
+		face_corner = face_corner + 2 < face->n ? face_corner + 1 : 0;
 
 		Triangle &current = buffer[count];
-
 		for(int k = 0; k < 3; k++) {
-			int v = face.f[k];
-			if(v < 0 || v >= nVertices())
-				throw nx::Error("Bad index in triangle list.");
-			Vertex &vertex = vertices[face.f[k]];
+			const int corner = fan[k];
+			Vertex &vertex = vertices[face->f[corner]];
 			if(!has_vertex_tex_coords) {
-				vertex.t[0] = face.t[k*2];
-				vertex.t[1] = face.t[k*2+1];
+				vertex.t[0] = face->t[corner*2];
+				vertex.t[1] = face->t[corner*2+1];
 			}
 
 			if (has_textures) {
@@ -338,9 +385,7 @@ uint32_t PlyLoader::getTriangles(uint32_t size, Triangle *buffer) {
 		//TODO! detect complicated texture coordinates
 
 		current.node = 0;
-		current.tex = face.texNumber + texOffset;
-
-		current_triangle++;
+		current.tex = face->texNumber + texOffset;
 
 		//ignore degenerate triangles
 		if(current.isDegenerate())
