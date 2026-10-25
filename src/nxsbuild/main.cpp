@@ -38,6 +38,10 @@ int main(int argc, char *argv[]) {
 	QCoreApplication myUselessApp(argc, argv);
 	setlocale(LC_ALL, "C");
 	QLocale::setDefault(QLocale::C);
+#if QT_VERSION >= QT_VERSION_CHECK(6, 0, 0)
+	// Qt6 rejects images over 256 MB decoded (i.e. larger than 8K); 0 disables the limit.
+	QImageReader::setAllocationLimit(0);
+#endif
 
 	int node_size = 1<<15;
 	float texel_weight =0.05; //relative weight of texels.
@@ -53,6 +57,8 @@ int main(int argc, char *argv[]) {
 	QString output("");                 //output file
 	QString mtl;
 	QString translate;
+	QString scalate;
+	QString colormap;
 	bool center = false;
 
 
@@ -65,6 +71,7 @@ int main(int argc, char *argv[]) {
 	bool useOrigTex = false;
 	bool create_pow_two_tex = false;
 	bool deepzoom = false;
+	bool no_heuristic = false;
 
 	//BTREE options
 	QVariant adaptive(0.333f);
@@ -112,13 +119,18 @@ int main(int argc, char *argv[]) {
 	opt.addSwitch('C', "colors", "save vertex colors", &colors);
 	opt.addSwitch('c', "no colors", "do not store per vertex colors", &no_colors);
 	opt.addSwitch('u', "no textures", "do not store textures and vertex texture coordinates", &no_texcoords);
+	opt.addSwitch('H', "no heuristic", "skip the check predicting the 'fragmented parametrization' abort", &no_heuristic);
 
 
 	//other options
 	opt.addOption('r', "ram", "max ram used (in MegaBytes), default 2000 (WARNING: just an approximation)", &ram_buffer);
 	opt.addOption('w', "workers", "number of workers: default = 4", &n_threads);
 	opt.addOption('T', "origin", "new origin for the model in the format X:Y:Z", &translate);
+	opt.addOption('W', "scale", "scale vector (after origin subtraction) X:Y:Z", &scalate);
 	opt.addSwitch('G', "center", "set origin in the bounding box center of the input meshes", &center);
+
+	//ts specific options
+	opt.addOption('K', "colormap", "for .ts files: property:colormap such as temperature:viridis (or plasma, spectral)", &colormap);
 	opt.parse();
 
 	//Check parameters are correct
@@ -144,12 +156,16 @@ int main(int argc, char *argv[]) {
 		}
 	}
 
-	if(output == "") output = inputs[0].left(inputs[0].length()-4);
+
+	if(output == "") {
+		int last = inputs[0].lastIndexOf(".");
+		output = inputs[0].left(last);
+	}
 	if(!output.endsWith(".nxs"))
 		output += ".nxs";
 
 	if(node_size < 1000 || node_size >= 1<<16) {
-		cerr << "Patch size (" << node_size << ") out of bounds [1000-65536]" << endl;
+		cerr << "Patch size (" << node_size << ") out of bounds [1000-65535]" << endl;
 		return -1;
 	}
 
@@ -175,6 +191,26 @@ int main(int argc, char *argv[]) {
 		}
 	}
 
+
+	vcg::Point3d scale(0, 0, 0);
+	if(!scalate.isEmpty()) {
+		QStringList p = scalate.split(':');
+		if(p.size() != 3) {
+			cerr << "Malformed scale parameter, expecting X:Y:Z" << endl;
+			return -1;
+		}
+
+		bool ok = false;
+		for(int i = 0; i < 3; i++) {
+			scale[i] = p[i].toDouble(&ok);
+			if(!ok) {
+				cerr << "Malformed scale parameter, expecting X:Y:Z" << endl;
+				return -1;
+			}
+		}
+	}
+
+
 	Stream *stream = 0;
 	KDTree *tree = 0;
 	int returncode = 0;
@@ -197,6 +233,14 @@ int main(int argc, char *argv[]) {
 		else
 			stream = new StreamSoup("cache_stream");
 
+		if(!colormap.isNull()) {
+			stream->colormap = colormap.split(":");
+			if(stream->colormap.size() != 2) {
+				throw QString("Format for color map is 'property:colormap'");
+			}
+			colors = true;
+		}
+
 		stream->setVertexQuantization(vertex_quantization);
 		stream->setMaxMemory(max_memory);
 		if(center) {
@@ -207,6 +251,8 @@ int main(int argc, char *argv[]) {
 			stream->origin = box.Center();
 		} else
 			stream->origin = origin;
+		if(!scalate.isEmpty())
+			stream->scale = scale;
 
 		vcg::Point3d &o = stream->origin;
 		if(o[0] != 0.0 || o[1] != 0.0 || o[2] != 0.0) {
@@ -253,6 +299,31 @@ int main(int argc, char *argv[]) {
 		if(has_textures && !no_texcoords) {
 			components |= NexusBuilder::TEXTURES;
 			cout << "Textures enabled\n";
+		}
+
+		StreamSoup *soup = dynamic_cast<StreamSoup *>(stream);
+		if((components & NexusBuilder::TEXTURES) && soup && soup->size() && !no_heuristic) {
+			//The build aborts when a node has more than 60000 vertices after splitting texture seams.
+			//Leaf nodes hold node_size faces, and since seams resist simplification the count roughly
+			//doubles at coarser levels (factor fitted on 66 photogrammetric models, 7 aborts).
+			const double max_vertices = 60000;
+			const double seam_growth = 2.0;
+			double uv_per_face = soup->estimatedUvVertices()/soup->size();
+			double predicted = seam_growth*node_size*uv_per_face;
+			cout << "UV vertices per face: " << qPrintable(QString::number(uv_per_face, 'f', 3))
+				 << ", predicted peak node vertices: " << (int)predicted << " (max " << (int)max_vertices << ")\n";
+			if(predicted > max_vertices) {
+				int suggested = int(max_vertices/(seam_growth*uv_per_face))/1024*1024;
+				QString msg = QString("Fragmented parametrization: the build will likely abort after most of the work is done.\n");
+				if(suggested >= 1024) {
+				    msg += QString("Try -f %1 (or lower).\n").arg(suggested);
+				} else {
+				    msg += "Reducing -f is unlikely to help: reparametrize the mesh (e.g. texture-defrag).\n";
+				}
+				msg += "To verify, run the same command adding -O (no texture repacking): it reaches the abort\n"
+					   "much faster. Use -H to skip this check.";
+				throw msg;
+			}
 		}
 
 		//WORKAROUND to save loading textures not needed

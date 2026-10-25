@@ -1,9 +1,18 @@
 #export CMAKE_PREFIX_PATH=path to Qt/5.5/gcc_64/ (where you would find bin/qmake)
-cmake_minimum_required(VERSION 3.5)
+cmake_minimum_required(VERSION 3.10)
 project(nexus)
 
 option(BUILD_NXS_BUILD "" OFF)
 option(BUILD_NXS_EDIT "" OFF)
+
+# A standalone build installs the static library, its headers and the CMake package. A project
+# that embeds nexus (add_subdirectory) links it into its own targets and installs only those.
+if(CMAKE_SOURCE_DIR STREQUAL CMAKE_CURRENT_SOURCE_DIR)
+	set(NEXUS_INSTALL_DEFAULT ON)
+else()
+	set(NEXUS_INSTALL_DEFAULT OFF)
+endif()
+option(NEXUS_INSTALL "Install the nexus library, its headers and its CMake package" ${NEXUS_INSTALL_DEFAULT})
 
 set (CMAKE_CXX_STANDARD 11)
 
@@ -12,7 +21,13 @@ set(CMAKE_POLICY_DEFAULT_CMP0077 NEW)
 
 set(CMAKE_WINDOWS_EXPORT_ALL_SYMBOLS ON)
 
-find_package(Qt5 COMPONENTS Core Gui REQUIRED)
+# The library needs only QtCore and QtGui (no widgets). Qt 5.15 and Qt 6 both work; a parent
+# project that already picked a Qt major version (QT_VERSION_MAJOR) gets the same one here, so
+# the library and the code linking it never mix two Qt versions in one image.
+if(NOT QT_VERSION_MAJOR)
+	find_package(QT NAMES Qt5 Qt6 COMPONENTS Core Gui REQUIRED)
+endif()
+find_package(Qt${QT_VERSION_MAJOR} COMPONENTS Core Gui REQUIRED)
 
 # nexus version
 if (EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/NEXUS_VERSION")
@@ -21,8 +36,19 @@ else()
 	message(FATAL_ERROR "NEXUS_VERSION file not found in the repository")
 endif()
 
-# VCGLib -- required
-if (VCGDIR) # VCGDIR exists - using custom user vcglib path
+# VCGLib -- required. A parent project that already added it (target vcglib, with VCGDIR set)
+# is used as is: adding it a second time would add its install rules a second time, and an
+# installed VCGLib found by find_package could not take the vcglib name.
+if(NOT TARGET vcglib)
+	find_package(vcglib CONFIG)
+endif()
+if(TARGET vcglib::vcglib)
+	message(STATUS "nexus - VCGLib - using system provided library")
+	add_library(vcglib ALIAS vcglib::vcglib)
+	get_target_property(VCGDIR vcglib::vcglib INTERFACE_INCLUDE_DIRECTORIES)
+elseif(TARGET vcglib)
+	message(STATUS "nexus - VCGLib - using the parent project's library")
+elseif (VCGDIR) # VCGDIR exists - using custom user vcglib path
 	if(EXISTS ${VCGDIR})
 		add_subdirectory(${VCGDIR} ${CMAKE_CURRENT_BINARY_DIR}/vcglib)
 		message(STATUS "nexus - VCGLib - using custom VCGDIR path library")
@@ -48,13 +74,13 @@ endif()
 set(BUILD_CORTO_CODEC_UNITY OFF)
 set(BUILD_CORTO_EXE OFF)
 
-# corto is a third-party submodule (cnr-isti-vclab/corto) pinned at a commit whose
-# CMakeLists still declares cmake_minimum_required(VERSION 3.1). CMake >= 4.0 removed
-# compatibility with versions < 3.5, so floor the policy version only for the corto
-# subtree without modifying the vendored third-party sources.
-set(CMAKE_POLICY_VERSION_MINIMUM 3.5)
-add_subdirectory(src/corto EXCLUDE_FROM_ALL)
-unset(CMAKE_POLICY_VERSION_MINIMUM)
+find_package(corto CONFIG)
+if(TARGET corto::corto)
+	message(STATUS "nexus - corto - using system provided library")
+	add_library(corto ALIAS corto::corto)
+else()
+	add_subdirectory(src/corto EXCLUDE_FROM_ALL)
+endif()
 
 add_subdirectory(src)
 
@@ -66,3 +92,24 @@ if(BUILD_NXS_EDIT)
 	add_subdirectory(src/nxsedit)
 endif()
 
+if(NEXUS_INSTALL AND TARGET vcglib::vcglib AND TARGET corto::corto)
+	install(EXPORT nexusTargets
+		DESTINATION lib/cmake/nexus
+		NAMESPACE nexus::
+		FILE nexusTargets.cmake
+	)
+
+	include(CMakePackageConfigHelpers)
+	# generate the config file that includes the exports
+	configure_package_config_file(${CMAKE_CURRENT_SOURCE_DIR}/Config.cmake.in
+		"${CMAKE_CURRENT_BINARY_DIR}/nexusConfig.cmake"
+		INSTALL_DESTINATION lib/cmake/nexus
+		NO_SET_AND_CHECK_MACRO
+		NO_CHECK_REQUIRED_COMPONENTS_MACRO
+	)
+
+	install(FILES
+		"${CMAKE_CURRENT_BINARY_DIR}/nexusConfig.cmake"
+		DESTINATION lib/cmake/nexus
+	)
+endif()

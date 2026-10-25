@@ -454,7 +454,6 @@ QImage NexusBuilder::extractNodeTex(TMesh &mesh, int level, float &error, float 
 	}
 
 	{
-		// QMutexLocker locker(&m_atlas);
 		//	static int boxid = 0;
 		QPainter painter(&image);
 		//convert tex coordinates using mapping
@@ -604,6 +603,9 @@ protected:
 
 
 void NexusBuilder::processBlock(KDTreeSoup *input, StreamSoup *output, uint block, int level) {
+	if(abort_requested.load())   // another worker already failed, abort as well
+		return;
+
 	TMesh mesh;
 	TMesh tmp; //this is needed saving a mesh with vertices on seams duplicated., and for node tex coordinates to be rearranged
 
@@ -668,6 +670,7 @@ void NexusBuilder::processBlock(KDTreeSoup *input, StreamSoup *output, uint bloc
 
 		if(useNodeTex) {
 			QImage nodetex = extractNodeTex(tmp, level, error, pixelXedge);
+			if(nodetex.isNull()) return;
 			tmp.serialize(buffer, header.signature, node_patches);
 
 			Texture t;
@@ -831,6 +834,9 @@ void NexusBuilder::createMeshLevel(KDTreeSoup *input, StreamSoup *output, int le
 		this->processBlock(input, output, block, level);
 	}
 	// pool.waitForDone();
+
+	if(abort_requested.load())
+		throw abort_message;
 }
 
 

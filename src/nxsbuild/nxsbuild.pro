@@ -23,6 +23,7 @@ SOURCES += \
     ../../../vcglib/wrap/ply/plylib.cpp \
     ../common/virtualarray.cpp \
     ../common/cone.cpp \
+    colormap.cpp \
     main.cpp \
     meshstream.cpp \
     meshloader.cpp \
@@ -34,7 +35,8 @@ SOURCES += \
     objloader.cpp \
     tmesh.cpp \
     texpyramid.cpp \
-    stlloader.cpp
+    stlloader.cpp \
+    tsloader.cpp
 
 HEADERS += \
     ../../../vcglib/wrap/system/qgetopt.h \
@@ -42,6 +44,7 @@ HEADERS += \
     ../common/signature.h \
     ../common/cone.h \
     ../common/virtualarray.h \
+    colormap.h \
     meshstream.h \
     meshloader.h \
     plyloader.h \
@@ -57,7 +60,8 @@ HEADERS += \
     texpyramid.h \
     stlloader.h \
     vcgloader.h \
-    vcgloadermesh.h
+    vcgloadermesh.h \
+    tsloader.h
 
 DESTDIR = "../../bin"
 
