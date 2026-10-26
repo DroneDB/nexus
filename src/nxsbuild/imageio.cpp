@@ -16,6 +16,7 @@ for more details.
 */
 #include "imageio.h"
 
+#include <algorithm>
 #include <cstdarg>
 #include <csetjmp>
 #include <cstdint>
@@ -26,6 +27,7 @@ for more details.
 #include <png.h>
 #include <tiffio.h>
 #include <webp/decode.h>
+#include <webp/encode.h>
 
 //stb decodes the formats that are too small to need a library of their own (and no others)
 #define STB_IMAGE_IMPLEMENTATION
@@ -406,6 +408,39 @@ Image loadImage(const std::string &path, std::string &error) {
 		error = e.what();
 	}
 	return Image();
+}
+
+std::vector<unsigned char> encodeWebp(const Image &image, int quality) {
+	if(image.isNull())
+		throw Error("there is no image to encode");
+	WebPConfig config;
+	if(!WebPConfigPreset(&config, WEBP_PRESET_PHOTO, float(std::min(100, std::max(0, quality)))))
+		throw Error("could not set up the WebP encoder");
+
+	WebPPicture picture;
+	if(!WebPPictureInit(&picture))
+		throw Error("could not set up the WebP encoder");
+	picture.width = image.width();
+	picture.height = image.height();
+	picture.use_argb = 0;
+	WebPMemoryWriter writer;
+	WebPMemoryWriterInit(&writer);
+	picture.writer = WebPMemoryWrite;
+	picture.custom_ptr = &writer;
+
+	//B, G, R, A in memory: the alpha byte is ignored, the pixels are opaque
+	const bool ok = WebPPictureImportBGRX(&picture, reinterpret_cast<const uint8_t *>(image.scanLine(0)),
+	                                      image.width() * 4) &&
+	                WebPEncode(&config, &picture);
+	const WebPEncodingError status = picture.error_code;
+	WebPPictureFree(&picture);
+	std::vector<unsigned char> webp;
+	if(ok)
+		webp.assign(writer.mem, writer.mem + writer.size);
+	WebPMemoryWriterClear(&writer);
+	if(!ok)
+		throw Error("could not encode a WebP image (error " + std::to_string(int(status)) + ")");
+	return webp;
 }
 
 } //namespace

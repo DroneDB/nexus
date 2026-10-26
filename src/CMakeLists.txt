@@ -92,7 +92,7 @@ set_target_properties(nexus PROPERTIES POSITION_INDEPENDENT_CODE ON)
 # The image libraries are private: the program that links nexus does not need their headers.
 target_include_directories(nexus PRIVATE ${Stb_INCLUDE_DIR})
 target_link_libraries(nexus PUBLIC vcglib corto)
-target_link_libraries(nexus PRIVATE JPEG::JPEG PNG::PNG TIFF::TIFF WebP::webpdecoder)
+target_link_libraries(nexus PRIVATE JPEG::JPEG PNG::PNG TIFF::TIFF WebP::webp)
 
 if (WIN32)
 	target_compile_definitions(nexus PUBLIC NOMINMAX)

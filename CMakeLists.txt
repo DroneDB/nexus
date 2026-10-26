@@ -26,7 +26,7 @@ set(CMAKE_POLICY_DEFAULT_CMP0077 NEW)
 
 set(CMAKE_WINDOWS_EXPORT_ALL_SYMBOLS ON)
 
-# Node textures are JPEG, and the textures of a model come as JPEG, PNG, TIFF, WebP, BMP, GIF or
+# Node textures are JPEG or WebP, and the textures of a model come as JPEG, PNG, TIFF, WebP, BMP, GIF or
 # TGA files: libjpeg-turbo, libpng, libtiff and libwebp decode and encode them, and stb_image
 # reads the small formats. No GUI toolkit is involved.
 find_package(JPEG REQUIRED)

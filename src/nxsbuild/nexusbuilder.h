@@ -126,6 +126,9 @@ public:
 
 	float scaling;
 	bool useNodeTex; //use node textures
+	//the format of the node textures; the viewers tell them apart by their content
+	enum class TextureFormat { Jpeg, Webp };
+	TextureFormat texFormat = TextureFormat::Jpeg;
 	int tex_quality;
 	int max_node_triangles = 32000;
 	bool createPowTwoTex;
@@ -140,6 +143,7 @@ public:
 	void processBlock(KDTreeSoup *input, StreamSoup *output, unsigned int block, int level);
 
 	nx::Image extractNodeTex(TMesh &mesh, int level, float &error, float &pixelXedge);
+	std::vector<unsigned char> encodeNodeTex(const nx::Image &image) const;
 	void invertNodes(); //
 	void saturateNode(uint32_t n);
 	void optimizeNode(uint32_t node, unsigned char *chunk);

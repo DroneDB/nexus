@@ -493,6 +493,12 @@ Image NexusBuilder::extractNodeTex(TMesh &mesh, int level, float &error, float &
 	return image;
 }
 
+std::vector<unsigned char> NexusBuilder::encodeNodeTex(const Image &image) const {
+	if(texFormat == TextureFormat::Webp)
+		return encodeWebp(image, tex_quality);
+	return encodeJpeg(image, tex_quality, true, true);
+}
+
 void NexusBuilder::createCloudLevel(KDTreeCloud *input, StreamCloud *output, int level) {
 
 	for(unsigned int block = 0; block < input->nBlocks(); block++) {
@@ -628,8 +634,8 @@ void NexusBuilder::processBlock(KDTreeSoup *input, StreamSoup *output, unsigned 
 
 				output_pixels += nodetex.width()*nodetex.height();
 
-				const std::vector<unsigned char> jpeg = encodeJpeg(nodetex, tex_quality, true, true);
-				nodeTex.append(jpeg.data(), jpeg.size());
+				const std::vector<unsigned char> encoded = encodeNodeTex(nodetex);
+				nodeTex.append(encoded.data(), encoded.size());
 
 				nodeTex.padTo(pad(nodeTex.size()));
 			}
