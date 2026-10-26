@@ -15,6 +15,7 @@ MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
 GNU General Public License (http://www.gnu.org/licenses/gpl.txt)
 for more details.
 */
+#include <algorithm>
 #include "../common/error.h"
 
 #include "kdtree.h"
@@ -407,6 +408,30 @@ double KDTreeSoup::weight(Triangle &t) {
 	double area = fabs(((v1.t[0] - v0.t[0])*(v2.t[1] - v0.t[1]) - (v2.t[0] - v0.t[0])*(v1.t[1] - v0.t[1])))/2.0;
 	//compute area in texture space;
 	return area*w*h*texelScale*texelWeight;
+}
+
+double KDTreeSoup::medianTexelsPerTriangle() {
+	if(textures.empty() || texelWeight <= 0)
+		return 0;
+	std::vector<std::pair<double, uint32_t>> leaves; //texels per triangle, triangles
+	uint64_t triangles = 0;
+	for(KDCell &cell: cells) {
+		if(!cell.isLeaf() || cell.block < 0)
+			continue;
+		const uint32_t count = occupancy[cell.block];
+		if(count == 0)
+			continue;
+		leaves.emplace_back(cell.weight / texelWeight / count, count);
+		triangles += count;
+	}
+	std::sort(leaves.begin(), leaves.end());
+	uint64_t seen = 0;
+	for(auto &leaf: leaves) {
+		seen += leaf.second;
+		if(2*seen >= triangles)
+			return leaf.first;
+	}
+	return 0;
 }
 
 int KDTreeSoup::assign(Triangle &t, uint32_t &mask, vcg::Point3f axis, float middle) {

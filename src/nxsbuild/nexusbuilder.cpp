@@ -156,12 +156,13 @@ void NexusBuilder::create(KDTree *tree, Stream *stream, unsigned int top_node_si
 
 	//the triangles are weighed by the texels they cover at every level, not only at the first:
 	//the stream forgets the textures once it has been read, and each level of the texture
-	//pyramid has scaling times the texels of the one before, as it has scaling times the triangles
+	//pyramid has scaling times the texels of the one before
 	tree->textures = stream->textures;
 	tree->texelScale = 1.0;
 
 	int level = 0;
 	int last_top_level_size = 0;
+	size_t levelNodes = 0; //the nodes of the level just made
 	do {
 		tree->clear();
 		if(level % 2) tree->setAxesDiagonal();
@@ -169,8 +170,12 @@ void NexusBuilder::create(KDTree *tree, Stream *stream, unsigned int top_node_si
 
 		tree->load(stream);
 		stream->clear();
+		if(skipSimplifyLevels < 0)
+			skipSimplifyLevels = textureBoundLevels(tree);
 
+		const size_t nodesBefore = nodes.size();
 		createLevel(tree, stream, level);
+		levelNodes = nodes.size() - nodesBefore;
 		level++;
 		tree->texelScale *= double(atlas.scale) * double(atlas.scale);
 		if(skipSimplifyLevels <= 0 && last_top_level_size != 0 && stream->size()/(float)last_top_level_size > 0.9f) {
@@ -180,7 +185,10 @@ void NexusBuilder::create(KDTree *tree, Stream *stream, unsigned int top_node_si
 		}
 		last_top_level_size = stream->size();
 		skipSimplifyLevels--;
-	} while(stream->size() > top_node_size);
+		//the levels that only halve the texture go on, however few the triangles, until one node
+		//holds the model: the top would otherwise be many nodes of fine texture, all loaded at
+		//once. A single node needs no coarser level, its texture is within maxNodeTexSide.
+	} while(stream->size() > top_node_size || (skipSimplifyLevels > 0 && levelNodes > 1));
 
 	//only the sink: every block was empty (no valid triangles or points in the input)
 	if(nodes.size() < 2)
@@ -224,7 +232,28 @@ public:
 
 };
 
-Image NexusBuilder::extractNodeTex(TMesh &mesh, int level, float &error, float &pixelXedge) {
+//The node error of a simplified node counts at most this many squared texels along a triangle
+//edge: a texture finer than that does not make the node more precise than its triangles, which
+//are about to be simplified.
+static const float MAX_SQUARED_TEXELS_PER_EDGE = 10.0f;
+
+//The levels a model needs before its texture is no finer than its triangles: each level halves
+//the texels, and a triangle whose edges span sqrt(MAX_SQUARED_TEXELS_PER_EDGE) texels covers
+//about sqrt(3)/4 of their square. Until then the levels keep the triangles and only make the
+//texture coarser: simplifying a node cut small to keep its texture within maxNodeTexSide would
+//collapse its inside onto a few vertices, its border being locked.
+int NexusBuilder::textureBoundLevels(KDTree *tree) const {
+	KDTreeSoup *soup = dynamic_cast<KDTreeSoup *>(tree);
+	if(!soup || !hasTextures() || scaling <= 0 || scaling >= 1)
+		return 0;
+	const double balanced = std::sqrt(3.0) / 4.0 * MAX_SQUARED_TEXELS_PER_EDGE;
+	const double density = soup->medianTexelsPerTriangle();
+	if(density <= balanced)
+		return 0;
+	return int(std::ceil(std::log(density / balanced) / std::log(1.0 / scaling)));
+}
+
+Image NexusBuilder::extractNodeTex(TMesh &mesh, int level, bool simplified, float &error, float &pixelXedge) {
 	std::vector<vcg::Box2f> boxes;
 	std::vector<int> box_texture; //which texture each box belongs;
 	std::vector<int> vertex_to_tex(mesh.vert.size(), -1);
@@ -438,9 +467,9 @@ Image NexusBuilder::extractNodeTex(TMesh &mesh, int level, float &error, float &
 	}
 	//compute error, in the pixels of the texture as stored: the texture coordinates are relative
 	//to its size, so they need no change when it is made smaller, but a pixel covers more of
-	//the surface
-	const float storedPdx = 1/(float)storedSize[0];
-	float pdx2 = storedPdx*storedPdx;
+	//the surface. Each axis counts the pixels of its own side.
+	const float storedWidth = float(storedSize[0]);
+	const float storedHeight = float(storedSize[1]);
 	error = 0.0;
 	pixelXedge = 0.0f;
 	for(auto &face: mesh.face) {
@@ -448,9 +477,11 @@ Image NexusBuilder::extractNodeTex(TMesh &mesh, int level, float &error, float &
 			int j = (k==2)?0:k+1;
 
 			float edge = vcg::SquaredNorm(face.P(k) - face.P(j));
-			float pixel = vcg::SquaredNorm(face.V(k)->T().P() - face.V(j)->T().P())/pdx2;
+			const vcg::Point2f uv = face.V(k)->T().P() - face.V(j)->T().P();
+			float pixel = uv[0]*storedWidth*uv[0]*storedWidth + uv[1]*storedHeight*uv[1]*storedHeight;
 			pixelXedge += pixel;
-			if(pixel > 10) pixel = 10;
+			//a node whose triangles are kept is as precise as its texels, however many there are
+			if(simplified && pixel > MAX_SQUARED_TEXELS_PER_EDGE) pixel = MAX_SQUARED_TEXELS_PER_EDGE;
 			if(pixel < 1)
 				error += edge;
 			else
@@ -458,7 +489,13 @@ Image NexusBuilder::extractNodeTex(TMesh &mesh, int level, float &error, float &
 		}
 	}
 	pixelXedge = sqrt(pixelXedge/mesh.face.size()*3);
-	error = sqrt(error/mesh.face.size()*3);
+	//the mean over the edges of the squared size of a texel on the surface
+	const float meanSquaredTexel = error/(3.0f*mesh.face.size());
+	//A node whose triangles are kept is as precise as its texels. A simplified node keeps the
+	//error Nexus has always given it, three times that size (the sum was divided by the faces
+	//and multiplied by 3, instead of divided by the edges): the error targets of the viewers are
+	//set for it.
+	error = (simplified ? 3.0f : 1.0f) * sqrt(meanSquaredTexel);
 
 	double areausage = 0.0;
 	//compute area waste
@@ -622,7 +659,7 @@ void NexusBuilder::processBlock(KDTreeSoup *input, StreamSoup *output, unsigned 
 	} else {
 
 		if(useNodeTex) {
-			Image nodetex = extractNodeTex(tmp, level, error, pixelXedge);
+			Image nodetex = extractNodeTex(tmp, level, skipSimplifyLevels <= 0, error, pixelXedge);
 			if(nodetex.isNull())
 				throw nx::Error("could not create the texture of a node");
 			tmp.serialize(buffer, header.signature, node_patches);

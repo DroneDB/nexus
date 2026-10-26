@@ -137,12 +137,15 @@ public:
 	int maxNodeTexSide = 0;
 	bool deepzoom = false; //use deepzoom style where each node is in a different file.
 
-	//if too many texel per edge, simplification is inhibited, but don't quit prematurely
+	//the levels, from the finest, that keep the triangles of the level below and only halve its
+	//texture, for a model whose texture is much finer than its triangles. Negative: as many as
+	//the texture needs to come down to a few texels per triangle edge (see textureBoundLevels)
 	int skipSimplifyLevels = 0;
 
 	void processBlock(KDTreeSoup *input, StreamSoup *output, unsigned int block, int level);
 
-	nx::Image extractNodeTex(TMesh &mesh, int level, float &error, float &pixelXedge);
+	nx::Image extractNodeTex(TMesh &mesh, int level, bool simplified, float &error, float &pixelXedge);
+	int textureBoundLevels(KDTree *tree) const;
 	std::vector<unsigned char> encodeNodeTex(const nx::Image &image) const;
 	void invertNodes(); //
 	void saturateNode(uint32_t n);

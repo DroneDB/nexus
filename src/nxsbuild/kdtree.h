@@ -105,6 +105,9 @@ public:
 	void clear();
 	void pushTriangle(Triangle &t);
 	double weight(Triangle &t);
+	//the texels per triangle of the leaf that holds the median triangle, at the scale of the
+	//current level; 0 without textures
+	double medianTexelsPerTriangle();
 
 protected:
 	uint64_t addBlock() { return VirtualTriangleSoup::addBlock(); }
