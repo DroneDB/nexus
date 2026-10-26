@@ -636,7 +636,8 @@ void NexusBuilder::storeNodeTex(size_t texture, const Image &image) {
 		appendNodeTex(texture, encodeNodeTex(image));
 		return;
 	}
-	while(pendingTex.size() >= size_t(textureThreads))
+	//the building thread is one of the textureThreads
+	while(pendingTex.size() >= size_t(textureThreads - 1))
 		appendOldestNodeTex();
 	//the image shares its pixels with the copy the task holds, and nothing writes them any more
 	pendingTex.emplace_back(texture, std::async(std::launch::async, [this, image]() { return encodeNodeTex(image); }));

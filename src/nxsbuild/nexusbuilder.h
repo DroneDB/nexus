@@ -150,8 +150,9 @@ public:
 	nx::Image extractNodeTex(TMesh &mesh, int level, bool simplified, float &error, float &pixelXedge);
 	int textureBoundLevels(KDTree *tree) const;
 	std::vector<unsigned char> encodeNodeTex(const nx::Image &image) const;
-	//Node textures are encoded on up to textureThreads threads and written to nodeTex in the
-	//order of the textures, so the file is the same whatever the number of threads.
+	//The threads the build keeps busy: the one that builds the nodes, and textureThreads - 1 more
+	//that encode node textures meanwhile. 1 encodes on the building thread. The textures are
+	//written to nodeTex in their order whatever the number of threads.
 	int textureThreads = 1;
 	std::deque<std::pair<size_t, std::future<std::vector<unsigned char>>>> pendingTex;
 	void storeNodeTex(size_t texture, const nx::Image &image);
