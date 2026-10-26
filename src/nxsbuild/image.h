@@ -24,9 +24,7 @@ for more details.
 namespace nx {
 
 //An opaque true color image: every pixel is 0xffRRGGBB. This is everything the texture code
-//of the builder needs, and the pixels it produces are the ones the builder has always had:
-//the operations below pick the same source pixels, and keep the same colors, as the image
-//library Nexus used before (see scaled()).
+//of the builder needs.
 //
 //Copying an Image is cheap: copies share their pixels. An image is therefore written only
 //where it was just created (fill(), draw(), scanLine()); every other operation returns a
@@ -64,13 +62,11 @@ public:
 	void draw(int x, int y, const Image &source, int sx, int sy, int width, int height);
 	void draw(int x, int y, const Image &source) { draw(x, y, source, 0, 0, source.width_, source.height_); }
 
-	//Resized to width x height by nearest neighbour sampling, picking the pixels Qt's
-	//FastTransformation picked for a 32 bit image (the resize of the textures has always been
-	//this one). A null image when width or height is not positive.
-	Image scaled(int width, int height) const;
-	//As large as fits in width x height with the proportions of this image (the size
-	//QSize::scale(KeepAspectRatio) gives), sampled like scaled().
-	Image scaledToFit(int width, int height) const;
+	//Resized to width x height, which is no larger than this image, each pixel the average of
+	//the source area it covers (a box filter): a texture made smaller keeps the mean color of
+	//its details instead of a scattering of the pixels that happened to be picked. A null image
+	//when width or height is not positive; throws std::invalid_argument when either is larger.
+	Image downscaled(int width, int height) const;
 
 private:
 	int width_ = 0;

@@ -20,6 +20,7 @@ for more details.
 #include <cmath>
 #include <cstring>
 #include <stdexcept>
+#include <vector>
 
 namespace nx {
 
@@ -73,74 +74,76 @@ void Image::draw(int x, int y, const Image &source, int sx, int sy, int width, i
 
 namespace {
 
-//How one axis of a nearest neighbour resize reads its source: target pixel i takes the source
-//pixel (base + i * step) >> 16. The numbers are those of Qt's FastTransformation scaling of a
-//32 bit image (16.16 fixed point, the step truncated), so a resized texture keeps the pixels it
-//always had, including the last target pixel that Qt leaves black when the walk would end
-//outside of the source.
-struct ScaleAxis {
-	uint64_t base;
-	uint64_t step;
-	int count;       //target pixels that read the source; the ones after them stay black
-
-	ScaleAxis(int source, int target) {
-		const double scale = double(target) / double(source);
-		const double covered = double(source) * scale;           //size of the resized image
-		const double ratio = double(source) / covered;           //source pixels per target pixel
-		step = uint64_t(65536.0 * ratio);
-		count = std::min(int(std::floor(covered + 0.5)), target);
-		base = uint64_t(std::ceil(0.5 * ratio * 65536.0)) - 1;
-		//Qt drops the last pixel when it would read past the source; this drops as many as
-		//needed, which is the same for every size it has been seen to work with, and never
-		//reads out of the image
-		const uint64_t end = uint64_t(source) << 16;
-		if(base >= end)
-			count = 0;
-		else if(step != 0)
-			count = int(std::min<uint64_t>(uint64_t(count), (end - 1 - base) / step + 1));
-	}
+//The source pixels one target pixel of a box filtered resize covers along an axis, with the
+//share of each one: target pixel i spans [i * ratio, (i + 1) * ratio) of the source.
+struct BoxSpan {
+	int first = 0;
+	std::vector<float> weights;   //of source pixels first, first + 1, ... summing to 1
 };
+
+std::vector<BoxSpan> boxSpans(int source, int target) {
+	std::vector<BoxSpan> spans(static_cast<size_t>(target));
+	const double ratio = double(source) / double(target);
+	for(int i = 0; i < target; i++) {
+		const double start = i * ratio;
+		const double end = std::min(double(source), (i + 1) * ratio);
+		BoxSpan &span = spans[size_t(i)];
+		span.first = int(std::floor(start));
+		for(int s = span.first; s < source && s < end; s++) {
+			const double covered = std::min(end, s + 1.0) - std::max(start, double(s));
+			span.weights.push_back(float(covered / (end - start)));
+		}
+	}
+	return spans;
+}
+
+uint32_t packPixel(const float *rgb) {
+	auto channel = [](float v) { return unsigned(std::min(255.0f, std::max(0.0f, v + 0.5f))); };
+	return Image::rgb(channel(rgb[0]), channel(rgb[1]), channel(rgb[2]));
+}
 
 } //namespace
 
-Image Image::scaled(int width, int height) const {
+Image Image::downscaled(int width, int height) const {
 	if(isNull() || width <= 0 || height <= 0)
 		return Image();
+	if(width > width_ || height > height_)
+		throw std::invalid_argument("an image is downscaled to a size larger than its own");
 	if(width == width_ && height == height_)
 		return *this;
 
+	const std::vector<BoxSpan> columns = boxSpans(width_, width);
+	const std::vector<BoxSpan> rows = boxSpans(height_, height);
 	Image result(width, height);
-	if(width_ == 1 && height_ == 1) {
-		//Qt paints a single pixel as a flat color
-		result.fill(pixels_[0]);
-		return result;
-	}
-
-	const ScaleAxis horizontal(width_, width), vertical(height_, height);
-	if(horizontal.count < width || vertical.count < height)
-		result.fill(0);
-	uint64_t row = vertical.base;
-	for(int y = 0; y < vertical.count; y++, row += vertical.step) {
-		const uint32_t *from = scanLine(int(row >> 16));
+	std::vector<float> row(size_t(width) * 3), sum(size_t(width) * 3);
+	for(int y = 0; y < height; y++) {
+		std::fill(sum.begin(), sum.end(), 0.0f);
+		const BoxSpan &rowSpan = rows[size_t(y)];
+		for(size_t r = 0; r < rowSpan.weights.size(); r++) {
+			//the source row, filtered across to the target width
+			const uint32_t *from = scanLine(rowSpan.first + int(r));
+			for(int x = 0; x < width; x++) {
+				const BoxSpan &column = columns[size_t(x)];
+				float rgb[3] = {0, 0, 0};
+				for(size_t c = 0; c < column.weights.size(); c++) {
+					const uint32_t p = from[column.first + int(c)];
+					const float w = column.weights[c];
+					rgb[0] += w * float((p >> 16) & 0xff);
+					rgb[1] += w * float((p >> 8) & 0xff);
+					rgb[2] += w * float(p & 0xff);
+				}
+				for(int k = 0; k < 3; k++)
+					row[size_t(x) * 3 + k] = rgb[k];
+			}
+			const float w = rowSpan.weights[r];
+			for(size_t k = 0; k < sum.size(); k++)
+				sum[k] += w * row[k];
+		}
 		uint32_t *to = result.scanLine(y);
-		uint64_t at = horizontal.base;
-		for(int x = 0; x < horizontal.count; x++, at += horizontal.step)
-			to[x] = from[at >> 16];
+		for(int x = 0; x < width; x++)
+			to[x] = packPixel(&sum[size_t(x) * 3]);
 	}
 	return result;
-}
-
-Image Image::scaledToFit(int width, int height) const {
-	if(isNull() || width <= 0 || height <= 0)
-		return Image();
-	int64_t fitWidth = width, fitHeight = height;
-	const int64_t proportionalWidth = int64_t(height) * width_ / height_;
-	if(proportionalWidth <= width) {
-		fitWidth = proportionalWidth;
-	} else {
-		fitHeight = int64_t(width) * height_ / width_;
-	}
-	return scaled(int(std::max<int64_t>(fitWidth, 1)), int(std::max<int64_t>(fitHeight, 1)));
 }
 
 } //namespace

@@ -129,6 +129,9 @@ public:
 	int tex_quality;
 	int max_node_triangles = 32000;
 	bool createPowTwoTex;
+	//the longest side of a node texture, in pixels: a node whose texture would be larger gets it
+	//downscaled to this size. 0 keeps every node texture at the resolution of its source
+	int maxNodeTexSide = 0;
 	bool deepzoom = false; //use deepzoom style where each node is in a different file.
 
 	//if too many texel per edge, simplification is inhibited, but don't quit prematurely

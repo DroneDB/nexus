@@ -66,8 +66,6 @@ float boxFloatPrecision(const vcg::Box3f &box) {
 
 void KDTree::load(Stream *stream) {
 
-	textures = stream->textures;
-
 	KDCell node;
 	node.block = 0;
 	//the node.box is relative to the axes
@@ -373,8 +371,8 @@ void KDTreeSoup::pushTriangle(Triangle &t) {
 				w = weight(t);
 			uint32_t node_triangles = occupancy[node.block];
 			bool too_large = node_triangles >=triangles_per_block;
-			bool too_small = node_triangles < triangles_per_block/16;
 			bool too_heavy = node.weight > max_weight;
+			bool too_small = node_triangles < (too_heavy ? min_heavy_triangles : triangles_per_block/16);
 			//a leaf that cannot be divided takes triangles as long as it has room for them
 			if(too_small || (!too_large && (!too_heavy || !node.divisible))) {
 				Soup soup = get(node.block);
@@ -408,7 +406,7 @@ double KDTreeSoup::weight(Triangle &t) {
 	double h = double(textures[t.tex].height);
 	double area = fabs(((v1.t[0] - v0.t[0])*(v2.t[1] - v0.t[1]) - (v2.t[0] - v0.t[0])*(v1.t[1] - v0.t[1])))/2.0;
 	//compute area in texture space;
-	return area*w*h*texelWeight;
+	return area*w*h*texelScale*texelWeight;
 }
 
 int KDTreeSoup::assign(Triangle &t, uint32_t &mask, vcg::Point3f axis, float middle) {

@@ -95,7 +95,7 @@ void TexLevel::build(TexLevel &parent) {
 			int sw = (sx + oside > parent.width) ? parent.width - sx: oside;
 			int sh = (sy + oside > parent.height) ? parent.height - sy: oside;
 			Image img = parent.read(sx, sy, sw, sh);
-			img = img.scaled(w, h);
+			img = img.downscaled(w, h);
 			collection->addImg(TexAtlas::Index(tex, level, x + tilew*y), img);
 		}
 	}
@@ -118,7 +118,7 @@ void TexPyramid::init(int tex, TexAtlas *c, Image &texture) {
 		level.init(tex, collection, texture, i);
 		//the next level is made from this one, the last has no next
 		if(i + 1 < levels.size())
-			texture = texture.scaled(round(texture.width()*collection->scale), round(texture.height()*collection->scale));
+			texture = texture.downscaled(round(texture.width()*collection->scale), round(texture.height()*collection->scale));
 	}
 }
 
@@ -127,6 +127,11 @@ bool TexPyramid::init(int tex, TexAtlas *c, LoadTexture &file) {
 	Image img = loadImage(file.filename, error);
 	if(img.isNull())
 		throw nx::Error("could not load texture: " + file.filename + ": " + error);
+	//the kd-tree weighs each triangle by the texels it covers, from these sizes: left at 0 every
+	//triangle weighs nothing and the nodes are cut by triangle count alone, however much texture
+	//they hold
+	file.width = uint32_t(img.width());
+	file.height = uint32_t(img.height());
 	init(tex, c, img);
 	return true;
 }

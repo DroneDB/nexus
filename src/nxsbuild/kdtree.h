@@ -51,7 +51,12 @@ public:
 	float ratio;
 	std::vector<KDCell> cells;
 	std::vector<vcg::Box3f> block_boxes;      //bounding box associated to the blocks (leaf nodes)
+	//the textures of the input, set by whoever builds the tree: loading a stream leaves them
+	//alone, since the streams of the coarser levels carry none
 	std::vector<LoadTexture> textures;
+	//the texel area of the current level relative to the textures above: each level of the
+	//texture pyramid has fewer texels than the one before
+	double texelScale = 1.0;
 
 	KDTree(float adapt = 0.333);
 	virtual ~KDTree() {}
@@ -90,6 +95,10 @@ public:
 	double current_weight = 0;
 	double max_weight = 0;
 	float texelWeight = 0.1;   //for computing max  weight per block
+	//a leaf over max_weight is split down to this many triangles, below the usual floor of a
+	//sixteenth of a block: the texels of a node all go in one texture, which must stay small
+	//enough to load, however few triangles cover them
+	static const uint32_t min_heavy_triangles = 32;
 	KDTreeSoup(const std::string &prefix, float adapt = 0.333): VirtualTriangleSoup(prefix), KDTree(adapt) {}
 	void setMaxMemory(uint64_t m) { return VirtualTriangleSoup::setMaxMemory(m); }
 	void setMaxWeight(uint32_t weight) { max_weight = double(weight); }

@@ -16,6 +16,8 @@ GNU General Public License (http://www.gnu.org/licenses/gpl.txt)
 for more details.
 */
 #include <string.h>
+#include <algorithm>
+#include <cmath>
 #include <filesystem>
 #include "vertex_cache_optimizer.h"
 
@@ -152,6 +154,12 @@ void NexusBuilder::create(KDTree *tree, Stream *stream, unsigned int top_node_si
 	sink.first_patch = 0;
 	nodes.push_back(sink);
 
+	//the triangles are weighed by the texels they cover at every level, not only at the first:
+	//the stream forgets the textures once it has been read, and each level of the texture
+	//pyramid has scaling times the texels of the one before, as it has scaling times the triangles
+	tree->textures = stream->textures;
+	tree->texelScale = 1.0;
+
 	int level = 0;
 	int last_top_level_size = 0;
 	do {
@@ -164,6 +172,7 @@ void NexusBuilder::create(KDTree *tree, Stream *stream, unsigned int top_node_si
 
 		createLevel(tree, stream, level);
 		level++;
+		tree->texelScale *= double(atlas.scale) * double(atlas.scale);
 		if(skipSimplifyLevels <= 0 && last_top_level_size != 0 && stream->size()/(float)last_top_level_size > 0.9f) {
 			// cout << "Stream: " << stream->size() << " Last top level size: " << last_top_level_size << endl;
 			// cout << "Larger top level, most probably to high parametrization fragmentation.\n";
@@ -369,6 +378,16 @@ Image NexusBuilder::extractNodeTex(TMesh &mesh, int level, float &error, float &
 		finalSize[ 1 ] = (int) nextPowerOf2( finalSize[ 1 ] );
 	}
 
+	//the size the node texture is stored at: the packed boxes, made smaller to fit in
+	//maxNodeTexSide when it is set
+	vcg::Point2i storedSize = finalSize;
+	const int packedSide = std::max(finalSize[0], finalSize[1]);
+	if(maxNodeTexSide > 0 && packedSide > maxNodeTexSide) {
+		const double ratio = double(maxNodeTexSide) / double(packedSide);
+		storedSize[0] = std::max(1, int(std::lround(finalSize[0] * ratio)));
+		storedSize[1] = std::max(1, int(std::lround(finalSize[1] * ratio)));
+	}
+
 	Image image(finalSize[0], finalSize[1]);
 	image.fill(Image::rgb(127, 127, 127));
 	//copy boxes using mapping
@@ -417,8 +436,11 @@ Image NexusBuilder::extractNodeTex(TMesh &mesh, int level, float &error, float &
 		assert(!isnan(uv[0]));
 		assert(!isnan(uv[1]));
 	}
-	//compute error:
-	float pdx2 = pdx*pdx;
+	//compute error, in the pixels of the texture as stored: the texture coordinates are relative
+	//to its size, so they need no change when it is made smaller, but a pixel covers more of
+	//the surface
+	const float storedPdx = 1/(float)storedSize[0];
+	float pdx2 = storedPdx*storedPdx;
 	error = 0.0;
 	pixelXedge = 0.0f;
 	for(auto &face: mesh.face) {
@@ -466,12 +488,7 @@ Image NexusBuilder::extractNodeTex(TMesh &mesh, int level, float &error, float &
 		}
 	}
 
-	image = image.mirrored();
-	if (image.width() > 1024 || image.height() > 1024){
-		int maxDim = std::max<int>(image.width(), image.height());
-		float ratio = 1024.0f / (float)maxDim;
-		image = image.scaledToFit(int(image.width() * ratio), int(image.height() * ratio));
-	}
+	image = image.mirrored().downscaled(storedSize[0], storedSize[1]);
 	//static int imgcount = 0;
 	return image;
 }
