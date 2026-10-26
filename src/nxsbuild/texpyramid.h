@@ -25,7 +25,8 @@ public:
 
 	void init(int tex, TexAtlas *c, Image& texture, int _level);
 	Image read(int x, int y, int w, int h);
-	void build(TexLevel &parent);
+	//this level, scale times the size of parent
+	void build(TexLevel &parent, float scale);
 	//void build(Image img);
 };
 
@@ -38,8 +39,7 @@ public:
 	void init(int tex, TexAtlas *c, Image &texture);
 	bool init(int tex, TexAtlas *c, LoadTexture &file);
 	Image read(int level, int x, int y, int w, int h);
-	void buildLevel(int level);
-	void buildAllLevels(int n_levels);
+	void buildLevel(int level, float scale);
 };
 
 //Collection of tex pyramids, level 0 is biggest one (bottom).
@@ -76,8 +76,12 @@ public:
 		uint32_t w,h;
 	};
 
-	const int side = 4096;
+	//the side of a tile: reading a rectangle loads, and decodes when spilled to disk, every tile it
+	//touches, so the tiles stay small next to the few hundred texels a node reads
+	const int side = 1024;
 	std::vector<TexPyramid> pyramids;
+	//the side of a level relative to the one below when the builder simplifies the triangles:
+	//sqrt of the simplification ratio, so each triangle keeps its texels
 	float scale = 0.70710678;
 	int quality = 92;
 	uint64_t cache_max = 2000000000;
@@ -89,7 +93,8 @@ public:
 	//will actually fill width and height information
 	bool addTextures(std::vector<LoadTexture> &filenames);
 	Image read(int tex, int level, int x, int y, int w, int h);
-	void buildLevel(int level);
+	//every texture at this level, scale times the size of the level below
+	void buildLevel(int level, float scale);
 
 	int width(int tex, int level) { 
 		if(tex < 0 || tex >= (int)pyramids.size()) return 1;

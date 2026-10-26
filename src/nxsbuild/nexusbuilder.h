@@ -18,6 +18,8 @@ for more details.
 #ifndef NX_NEXUSBUILDER_H
 #define NX_NEXUSBUILDER_H
 
+#include <deque>
+#include <future>
 #include <string>
 #include <vector>
 
@@ -91,9 +93,10 @@ public:
 	void initAtlas(std::vector<nx::Image>& textures);
 	bool initAtlas(std::vector<LoadTexture>& textures);
 	void create(KDTree *input, Stream *output, unsigned int top_node_size);
-	void createLevel(KDTree *input, Stream *output, int level);
+	//textureScale: the side of this level's textures relative to the level below
+	void createLevel(KDTree *input, Stream *output, int level, float textureScale);
 	void createCloudLevel(KDTreeCloud *input, StreamCloud *output, int level);
-	void createMeshLevel(KDTreeSoup *input, StreamSoup *output, int level);
+	void createMeshLevel(KDTreeSoup *input, StreamSoup *output, int level, float textureScale);
 
 
 	void setMaxMemory(uint64_t m) {
@@ -147,6 +150,15 @@ public:
 	nx::Image extractNodeTex(TMesh &mesh, int level, bool simplified, float &error, float &pixelXedge);
 	int textureBoundLevels(KDTree *tree) const;
 	std::vector<unsigned char> encodeNodeTex(const nx::Image &image) const;
+	//Node textures are encoded on up to textureThreads threads and written to nodeTex in the
+	//order of the textures, so the file is the same whatever the number of threads.
+	int textureThreads = 1;
+	std::deque<std::pair<size_t, std::future<std::vector<unsigned char>>>> pendingTex;
+	void storeNodeTex(size_t texture, const nx::Image &image);
+	void appendOldestNodeTex();
+	void appendNodeTex(size_t texture, const std::vector<unsigned char> &encoded);
+	//writes the node textures still being encoded
+	void finishNodeTex();
 	void invertNodes(); //
 	void saturateNode(uint32_t n);
 	void optimizeNode(uint32_t node, unsigned char *chunk);

@@ -416,6 +416,8 @@ std::vector<unsigned char> encodeWebp(const Image &image, int quality) {
 	WebPConfig config;
 	if(!WebPConfigPreset(&config, WEBP_PRESET_PHOTO, float(std::min(100, std::max(0, quality)))))
 		throw Error("could not set up the WebP encoder");
+	//effort 2 instead of the default 4: twice as fast on node textures, for 3% more bytes
+	config.method = 2;
 
 	WebPPicture picture;
 	if(!WebPPictureInit(&picture))

@@ -155,14 +155,15 @@ void NexusBuilder::create(KDTree *tree, Stream *stream, unsigned int top_node_si
 	nodes.push_back(sink);
 
 	//the triangles are weighed by the texels they cover at every level, not only at the first:
-	//the stream forgets the textures once it has been read, and each level of the texture
-	//pyramid has scaling times the texels of the one before
+	//the stream forgets the textures once it has been read, so the tree keeps them, with the
+	//texel area of the current level relative to the input
 	tree->textures = stream->textures;
 	tree->texelScale = 1.0;
 
 	int level = 0;
 	int last_top_level_size = 0;
 	size_t levelNodes = 0; //the nodes of the level just made
+	float textureScale = 1.0f; //the side of this level's textures relative to the level below
 	do {
 		tree->clear();
 		if(level % 2) tree->setAxesDiagonal();
@@ -174,10 +175,14 @@ void NexusBuilder::create(KDTree *tree, Stream *stream, unsigned int top_node_si
 			skipSimplifyLevels = textureBoundLevels(tree);
 
 		const size_t nodesBefore = nodes.size();
-		createLevel(tree, stream, level);
+		createLevel(tree, stream, level, textureScale);
 		levelNodes = nodes.size() - nodesBefore;
 		level++;
-		tree->texelScale *= double(atlas.scale) * double(atlas.scale);
+		//a level that keeps the triangles of the level below only makes the texture coarser: it
+		//halves its side, as a mipmap does. A level of simplified triangles keeps the texels of
+		//each triangle, sqrt(scaling) of the side.
+		textureScale = skipSimplifyLevels > 0 ? 0.5f : atlas.scale;
+		tree->texelScale *= double(textureScale) * double(textureScale);
 		if(skipSimplifyLevels <= 0 && last_top_level_size != 0 && stream->size()/(float)last_top_level_size > 0.9f) {
 			// cout << "Stream: " << stream->size() << " Last top level size: " << last_top_level_size << endl;
 			// cout << "Larger top level, most probably to high parametrization fragmentation.\n";
@@ -189,6 +194,7 @@ void NexusBuilder::create(KDTree *tree, Stream *stream, unsigned int top_node_si
 		//holds the model: the top would otherwise be many nodes of fine texture, all loaded at
 		//once. A single node needs no coarser level, its texture is within maxNodeTexSide.
 	} while(stream->size() > top_node_size || (skipSimplifyLevels > 0 && levelNodes > 1));
+	finishNodeTex();
 
 	//only the sink: every block was empty (no valid triangles or points in the input)
 	if(nodes.size() < 2)
@@ -237,11 +243,12 @@ public:
 //are about to be simplified.
 static const float MAX_SQUARED_TEXELS_PER_EDGE = 10.0f;
 
-//The levels a model needs before its texture is no finer than its triangles: each level halves
-//the texels, and a triangle whose edges span sqrt(MAX_SQUARED_TEXELS_PER_EDGE) texels covers
-//about sqrt(3)/4 of their square. Until then the levels keep the triangles and only make the
-//texture coarser: simplifying a node cut small to keep its texture within maxNodeTexSide would
-//collapse its inside onto a few vertices, its border being locked.
+//The levels a model needs before its texture is no finer than its triangles: each of these
+//levels keeps a quarter of the texels (half the side), and a triangle whose edges span
+//sqrt(MAX_SQUARED_TEXELS_PER_EDGE) texels covers about sqrt(3)/4 of their square. Until then the
+//levels keep the triangles and only make the texture coarser: simplifying a node cut small to
+//keep its texture within maxNodeTexSide would collapse its inside onto a few vertices, its
+//border being locked.
 int NexusBuilder::textureBoundLevels(KDTree *tree) const {
 	KDTreeSoup *soup = dynamic_cast<KDTreeSoup *>(tree);
 	if(!soup || !hasTextures() || scaling <= 0 || scaling >= 1)
@@ -250,7 +257,100 @@ int NexusBuilder::textureBoundLevels(KDTree *tree) const {
 	const double density = soup->medianTexelsPerTriangle();
 	if(density <= balanced)
 		return 0;
-	return int(std::ceil(std::log(density / balanced) / std::log(1.0 / scaling)));
+	return int(std::ceil(std::log(density / balanced) / std::log(4.0)));
+}
+
+//The texels around the triangles that are kept as they are: bilinear filtering and the first
+//mipmap levels read them along the edges of the triangles.
+static const int TEXEL_MARGIN = 4;
+
+//A node texture is packed from the bounding boxes of its pieces of texture, so most of it lies
+//outside the node's triangles: texels of the model's texture that the node never draws, which
+//cost as many bytes as the ones it draws. Those beyond TEXEL_MARGIN get one flat color, the mean
+//of the others. image is the node texture as stored (row 0 at the top, v = 1), mesh the node with
+//its texture coordinates in that texture.
+static void blankUndrawnTexels(Image &image, TMesh &mesh) {
+	const int width = image.width(), height = image.height();
+	if(width <= 2*TEXEL_MARGIN || height <= 2*TEXEL_MARGIN)
+		return;
+	std::vector<uint8_t> drawn(size_t(width) * size_t(height), 0);
+	//the texels whose center is inside a triangle, in pixel units of the stored image
+	for(auto &face: mesh.face) {
+		if(face.IsD()) continue;
+		float x[3], y[3];
+		for(int k = 0; k < 3; k++) {
+			const auto &uv = face.V(k)->T().P();
+			x[k] = uv[0] * width;
+			y[k] = (1.0f - uv[1]) * height;
+		}
+		const float area = (x[1]-x[0])*(y[2]-y[0]) - (x[2]-x[0])*(y[1]-y[0]);
+		const int x0 = std::max(0, int(std::floor(std::min({x[0], x[1], x[2]}))));
+		const int x1 = std::min(width - 1, int(std::ceil(std::max({x[0], x[1], x[2]}))));
+		const int y0 = std::max(0, int(std::floor(std::min({y[0], y[1], y[2]}))));
+		const int y1 = std::min(height - 1, int(std::ceil(std::max({y[0], y[1], y[2]}))));
+		for(int py = y0; py <= y1; py++) {
+			for(int px = x0; px <= x1; px++) {
+				const float cx = px + 0.5f, cy = py + 0.5f;
+				//on the same side of the three edges as the triangle's own orientation; a triangle
+				//with no area marks the texels its corners fall in
+				float w[3];
+				for(int k = 0; k < 3; k++) {
+					const int j = (k + 1) % 3;
+					w[k] = (x[j]-x[k])*(cy-y[k]) - (y[j]-y[k])*(cx-x[k]);
+				}
+				const bool inside = area >= 0 ? (w[0] >= 0 && w[1] >= 0 && w[2] >= 0)
+				                              : (w[0] <= 0 && w[1] <= 0 && w[2] <= 0);
+				if(inside)
+					drawn[size_t(py) * width + px] = 1;
+			}
+		}
+		for(int k = 0; k < 3; k++) {
+			const int px = std::min(width - 1, std::max(0, int(x[k]))), py = std::min(height - 1, std::max(0, int(y[k])));
+			drawn[size_t(py) * width + px] = 1;
+		}
+	}
+	//grow by TEXEL_MARGIN: a square around each drawn texel, rows then columns
+	std::vector<uint8_t> grown(drawn.size(), 0);
+	for(int py = 0; py < height; py++) {
+		int last = -2*TEXEL_MARGIN - 1; //the last drawn texel to the left, or beyond reach
+		for(int px = 0; px < width + TEXEL_MARGIN; px++) {
+			if(px < width && drawn[size_t(py) * width + px])
+				last = px;
+			const int at = px - TEXEL_MARGIN;
+			if(at >= 0 && at < width && (last >= at - TEXEL_MARGIN))
+				grown[size_t(py) * width + at] = 1;
+		}
+	}
+	std::fill(drawn.begin(), drawn.end(), 0);
+	for(int px = 0; px < width; px++) {
+		int last = -2*TEXEL_MARGIN - 1;
+		for(int py = 0; py < height + TEXEL_MARGIN; py++) {
+			if(py < height && grown[size_t(py) * width + px])
+				last = py;
+			const int at = py - TEXEL_MARGIN;
+			if(at >= 0 && at < height && (last >= at - TEXEL_MARGIN))
+				drawn[size_t(at) * width + px] = 1;
+		}
+	}
+	//the mean of the kept texels, then the flat color everywhere else
+	uint64_t sum[3] = {0, 0, 0}, kept = 0;
+	for(int py = 0; py < height; py++) {
+		const uint32_t *row = image.scanLine(py);
+		for(int px = 0; px < width; px++) {
+			if(!drawn[size_t(py) * width + px]) continue;
+			sum[0] += (row[px] >> 16) & 0xff; sum[1] += (row[px] >> 8) & 0xff; sum[2] += row[px] & 0xff;
+			kept++;
+		}
+	}
+	if(kept == 0)
+		return;
+	const uint32_t flat = Image::rgb(unsigned(sum[0] / kept), unsigned(sum[1] / kept), unsigned(sum[2] / kept));
+	for(int py = 0; py < height; py++) {
+		uint32_t *row = image.scanLine(py);
+		for(int px = 0; px < width; px++)
+			if(!drawn[size_t(py) * width + px])
+				row[px] = flat;
+	}
 }
 
 Image NexusBuilder::extractNodeTex(TMesh &mesh, int level, bool simplified, float &error, float &pixelXedge) {
@@ -526,8 +626,38 @@ Image NexusBuilder::extractNodeTex(TMesh &mesh, int level, bool simplified, floa
 	}
 
 	image = image.mirrored().downscaled(storedSize[0], storedSize[1]);
+	blankUndrawnTexels(image, mesh);
 	//static int imgcount = 0;
 	return image;
+}
+
+void NexusBuilder::storeNodeTex(size_t texture, const Image &image) {
+	if(textureThreads <= 1) {
+		appendNodeTex(texture, encodeNodeTex(image));
+		return;
+	}
+	while(pendingTex.size() >= size_t(textureThreads))
+		appendOldestNodeTex();
+	//the image shares its pixels with the copy the task holds, and nothing writes them any more
+	pendingTex.emplace_back(texture, std::async(std::launch::async, [this, image]() { return encodeNodeTex(image); }));
+}
+
+void NexusBuilder::appendOldestNodeTex() {
+	const size_t texture = pendingTex.front().first;
+	const std::vector<unsigned char> encoded = pendingTex.front().second.get();
+	pendingTex.pop_front();
+	appendNodeTex(texture, encoded);
+}
+
+void NexusBuilder::finishNodeTex() {
+	while(!pendingTex.empty())
+		appendOldestNodeTex();
+}
+
+void NexusBuilder::appendNodeTex(size_t texture, const std::vector<unsigned char> &encoded) {
+	textures[texture].offset = nodeTex.size()/NEXUS_PADDING;
+	nodeTex.append(encoded.data(), encoded.size());
+	nodeTex.padTo(pad(nodeTex.size()));
 }
 
 std::vector<unsigned char> NexusBuilder::encodeNodeTex(const Image &image) const {
@@ -664,23 +794,12 @@ void NexusBuilder::processBlock(KDTreeSoup *input, StreamSoup *output, unsigned 
 				throw nx::Error("could not create the texture of a node");
 			tmp.serialize(buffer, header.signature, node_patches);
 
-			Texture t;
-
-			{
-				t.offset = nodeTex.size()/NEXUS_PADDING;
-
-				output_pixels += nodetex.width()*nodetex.height();
-
-				const std::vector<unsigned char> encoded = encodeNodeTex(nodetex);
-				nodeTex.append(encoded.data(), encoded.size());
-
-				nodeTex.padTo(pad(nodeTex.size()));
-			}
-			{
-				textures.push_back(t);
-				for(Patch &patch: node_patches)
-					patch.texture = textures.size()-1; //last texture inserted
-			}
+			output_pixels += nodetex.width()*nodetex.height();
+			textures.push_back(Texture());
+			const size_t texture = textures.size()-1;
+			for(Patch &patch: node_patches)
+				patch.texture = texture;
+			storeNodeTex(texture, nodetex);
 		}
 
 		//VICIUOS TRICK: we could save only a texture every 2 geometry levels since the patch is contained also to a parent node.
@@ -778,8 +897,8 @@ void NexusBuilder::processBlock(KDTreeSoup *input, StreamSoup *output, unsigned 
 	delete []triangles;
 }
 
-void NexusBuilder::createMeshLevel(KDTreeSoup *input, StreamSoup *output, int level) {
-	atlas.buildLevel(level);
+void NexusBuilder::createMeshLevel(KDTreeSoup *input, StreamSoup *output, int level, float textureScale) {
+	atlas.buildLevel(level, textureScale);
 	if(level > 0)
 		atlas.flush(level-1);
 
@@ -788,7 +907,7 @@ void NexusBuilder::createMeshLevel(KDTreeSoup *input, StreamSoup *output, int le
 }
 
 
-void NexusBuilder::createLevel(KDTree *in, Stream *out, int level) {
+void NexusBuilder::createLevel(KDTree *in, Stream *out, int level, float textureScale) {
 	KDTreeSoup *isSoup = dynamic_cast<KDTreeSoup *>(in);
 	if(!isSoup) {
 		KDTreeCloud *input = dynamic_cast<KDTreeCloud *>(in);
@@ -797,7 +916,7 @@ void NexusBuilder::createLevel(KDTree *in, Stream *out, int level) {
 	} else {
 		KDTreeSoup *input = dynamic_cast<KDTreeSoup *>(in);
 		StreamSoup *output = dynamic_cast<StreamSoup *>(out);
-		createMeshLevel(input, output, level);
+		createMeshLevel(input, output, level, textureScale);
 	}
 }
 

@@ -1,3 +1,4 @@
+#include <algorithm>
 #include <assert.h>
 #include <math.h>
 #include <iostream>
@@ -74,12 +75,12 @@ Image TexLevel::read(int rx, int ry, int rw, int rh) {
 //reading line by line and fill all the levels at the same time
 //keep 2 lines in float for averaging, for each first line of tiles of each level.
 //in qimage reader use setscaledcliprect
-void TexLevel::build(TexLevel &parent) {
+void TexLevel::build(TexLevel &parent, float scale) {
 	int side = collection->side;
-	float scale = collection->scale;
 	tex = parent.tex;
-	width = floor(parent.width * scale);
-	height = floor(parent.height * scale);
+	//at least a pixel: a texture keeps halving for as many levels as the model has
+	width = std::max(1, int(floor(parent.width * scale)));
+	height = std::max(1, int(floor(parent.height * scale)));
 
 	tilew = 1 + (width-1)/side;
 	tileh = 1 + (height-1)/side;
@@ -103,23 +104,12 @@ void TexLevel::build(TexLevel &parent) {
 
 
 
+//Only level zero: each level above it is built when the builder reaches it, at the scale that
+//level needs (see NexusBuilder::create).
 void TexPyramid::init(int tex, TexAtlas *c, Image &texture) {
 	collection = c;
-	int size = std::max(texture.width(), texture.height());
-	int count = 1;
-	while(size > collection->side) {
-		size /= 2;
-		count++;
-	}
-	//create level zero.
-	levels.resize(count);
-	for(int i = 0; i < levels.size(); i++) {
-		TexLevel &level = levels[i];
-		level.init(tex, collection, texture, i);
-		//the next level is made from this one, the last has no next
-		if(i + 1 < levels.size())
-			texture = texture.downscaled(round(texture.width()*collection->scale), round(texture.height()*collection->scale));
-	}
+	levels.resize(1);
+	levels[0].init(tex, collection, texture, 0);
 }
 
 bool TexPyramid::init(int tex, TexAtlas *c, LoadTexture &file) {
@@ -141,7 +131,7 @@ Image TexPyramid::read(int level, int x, int y, int w, int h) {
 	return levels[level].read(x, y, w, h);
 }
 
-void TexPyramid::buildLevel(int level) {
+void TexPyramid::buildLevel(int level, float scale) {
 	if(levels.size() > (size_t)level) return;
 	if(levels.size() != (size_t)level)
 		throw nx::Error("texture atlas cannot skip levels when building");
@@ -149,7 +139,7 @@ void TexPyramid::buildLevel(int level) {
 	TexLevel &texlevel = levels.back();
 	texlevel.level = level;
 	texlevel.collection = collection;
-	texlevel.build(levels[level-1]);
+	texlevel.build(levels[level-1], scale);
 }
 
 
@@ -247,10 +237,10 @@ Image TexAtlas::getImg(Index index) {
 
 
 
-void TexAtlas::buildLevel(int level) {
+void TexAtlas::buildLevel(int level, float scale) {
 	if(!pyramids.size()) return;
 	for(auto &py: pyramids)
-		py.buildLevel(level);
+		py.buildLevel(level, scale);
 }
 
 //do not store it in temporary file, we are throwing away this level.

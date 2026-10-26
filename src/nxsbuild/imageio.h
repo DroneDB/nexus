@@ -40,8 +40,8 @@ Image decodeJpeg(const unsigned char *data, size_t size, std::string &error);
 //scans. Throws nx::Error when the encoder fails.
 std::vector<unsigned char> encodeJpeg(const Image &image, int quality, bool optimize, bool progressive);
 
-//The image as a lossy WebP file of the given quality (0..100), without alpha. Throws nx::Error
-//when the encoder fails.
+//The image as a lossy WebP file of the given quality (0..100), without alpha, at encoder effort
+//2 (of 0..6). Throws nx::Error when the encoder fails.
 std::vector<unsigned char> encodeWebp(const Image &image, int quality);
 
 } //namespace
